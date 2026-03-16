@@ -1,11 +1,19 @@
 use base64::Engine;
+use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tauri::Emitter;
+
+// ── Global state ─────────────────────────────────────────────────────────────
+
+static CANCEL_FLAG: AtomicBool = AtomicBool::new(false);
+static IS_CONVERTING: AtomicBool = AtomicBool::new(false);
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -328,15 +336,100 @@ pub fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &Me
     meta
 }
 
+// ── Parallel transcoding helper ─────────────────────────────────────────────
+
+fn transcode_parallel<F>(
+    items: &[(usize, String)],
+    tmp_dir: &Path,
+    bitrate: &str,
+    channels: &str,
+    sample_rate: Option<u32>,
+    emit: &F,
+    pct_start: f64,
+    pct_end: f64,
+) -> Result<Vec<PathBuf>, String>
+where
+    F: Fn(&str, f64, &str) + Sync,
+{
+    if items.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let max_threads = num_cpus::get().max(2) - 1;
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(max_threads)
+        .build()
+        .map_err(|e| format!("Thread pool error: {}", e))?;
+
+    let completed = AtomicUsize::new(0);
+    let total = items.len();
+    let pct_range = pct_end - pct_start;
+
+    pool.install(|| {
+        items
+            .par_iter()
+            .map(|(idx, path)| {
+                if CANCEL_FLAG.load(Ordering::Relaxed) {
+                    return Err("Cancelled by user".to_string());
+                }
+
+                let temp_aac = tmp_dir.join(format!("part_{:04}.m4a", idx));
+                let temp_str = temp_aac.to_str().unwrap().to_string();
+
+                let mut args = vec![
+                    "-y".to_string(), "-i".to_string(), path.clone(),
+                    "-c:a".to_string(), "aac".to_string(),
+                    "-b:a".to_string(), bitrate.to_string(),
+                    "-ac".to_string(), channels.to_string(),
+                    "-threads".to_string(), "0".to_string(),
+                    "-vn".to_string(),
+                ];
+
+                if let Some(sr) = sample_rate {
+                    args.push("-ar".to_string());
+                    args.push(sr.to_string());
+                }
+
+                args.push(temp_str);
+
+                let output = Command::new("ffmpeg")
+                    .args(&args)
+                    .output()
+                    .map_err(|e| format!("ffmpeg transcode failed: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "Transcode failed for {}: {}",
+                        path,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+
+                let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                emit(
+                    "transcoding",
+                    pct_start + (pct_range * done as f64 / total as f64),
+                    &format!("Transcoded {} of {} files", done, total),
+                );
+
+                Ok(temp_aac)
+            })
+            .collect()
+    })
+}
+
 // ── Merge pipeline ──────────────────────────────────────────────────────────
 
 /// Core merge logic, callable without Tauri. The `emit` closure receives progress updates.
 pub fn merge_audiobook_core<F>(config: MergeConfig, emit: F) -> Result<String, String>
 where
-    F: Fn(&str, f64, &str),
+    F: Fn(&str, f64, &str) + Sync,
 {
-
     emit("preparing", 0.0, "Analyzing files…");
+
+    if CANCEL_FLAG.load(Ordering::Relaxed) {
+        return Err("Cancelled by user".to_string());
+    }
 
     // Probe all files to get durations
     let file_paths: Vec<String> = config.files.iter().map(|f| f.path.clone()).collect();
@@ -362,6 +455,10 @@ where
     if uniform_aac {
         // ── Path 1: Concat demuxer (no re-encoding) ────────────────────────
         emit("merging", 10.0, "Remuxing AAC files (no re-encoding)…");
+
+        if CANCEL_FLAG.load(Ordering::Relaxed) {
+            return Err("Cancelled by user".to_string());
+        }
 
         let concat_list = tmp_dir.path().join("concat.txt");
         let mut f = fs::File::create(&concat_list)
@@ -397,45 +494,26 @@ where
         )?;
 
     } else if all_aac {
-        // ── Path 1b: All AAC but mismatched sample rates — normalize ────────
-        // Pick the most common sample rate as the target
-        let mut sr_counts = std::collections::HashMap::new();
+        // ── Path 1b: All AAC but mismatched sample rates — parallel normalize
+        let mut sr_counts = HashMap::new();
         for p in &probed {
             *sr_counts.entry(p.sample_rate).or_insert(0u32) += 1;
         }
         let target_sr = sr_counts.into_iter().max_by_key(|&(_, count)| count).unwrap().0;
-        let target_sr_arg = target_sr.to_string();
 
         emit("transcoding", 10.0, "Normalizing sample rates…");
 
-        let total = config.files.len();
-        let mut temp_aac_files: Vec<PathBuf> = Vec::new();
+        let items: Vec<(usize, String)> = config.files.iter().enumerate()
+            .map(|(i, f)| (i, f.path.clone()))
+            .collect();
 
-        for (i, file) in config.files.iter().enumerate() {
-            let pct = 10.0 + (50.0 * (i as f64) / total as f64);
-            emit("transcoding", pct, &format!("Normalizing file {} of {}…", i + 1, total));
+        let temp_aac_files = transcode_parallel(
+            &items, tmp_dir.path(), &bitrate_arg, channels_arg,
+            Some(target_sr), &emit, 10.0, 60.0,
+        )?;
 
-            let temp_aac = tmp_dir.path().join(format!("part_{:04}.m4a", i));
-            let status = Command::new("ffmpeg")
-                .args([
-                    "-y", "-i", &file.path,
-                    "-c:a", "aac", "-b:a", &bitrate_arg,
-                    "-ar", &target_sr_arg,
-                    "-ac", channels_arg,
-                    "-vn",
-                    temp_aac.to_str().unwrap(),
-                ])
-                .output()
-                .map_err(|e| format!("ffmpeg transcode failed: {}", e))?;
-
-            if !status.status.success() {
-                return Err(format!(
-                    "Transcode failed for {}: {}",
-                    file.path,
-                    String::from_utf8_lossy(&status.stderr)
-                ));
-            }
-            temp_aac_files.push(temp_aac);
+        if CANCEL_FLAG.load(Ordering::Relaxed) {
+            return Err("Cancelled by user".to_string());
         }
 
         emit("merging", 60.0, "Concatenating normalized files…");
@@ -451,36 +529,20 @@ where
         )?;
 
     } else if all_mp3 {
-        // ── Path 2: Transcode all MP3 to AAC ───────────────────────────────
+        // ── Path 2: Parallel transcode all MP3 to AAC ───────────────────────
         emit("transcoding", 10.0, "Transcoding MP3 files to AAC…");
 
-        let total = config.files.len();
-        let mut temp_aac_files: Vec<PathBuf> = Vec::new();
+        let items: Vec<(usize, String)> = config.files.iter().enumerate()
+            .map(|(i, f)| (i, f.path.clone()))
+            .collect();
 
-        for (i, file) in config.files.iter().enumerate() {
-            let pct = 10.0 + (50.0 * (i as f64) / total as f64);
-            emit("transcoding", pct, &format!("Transcoding file {} of {}…", i + 1, total));
+        let temp_aac_files = transcode_parallel(
+            &items, tmp_dir.path(), &bitrate_arg, channels_arg,
+            None, &emit, 10.0, 60.0,
+        )?;
 
-            let temp_aac = tmp_dir.path().join(format!("part_{:04}.m4a", i));
-            let status = Command::new("ffmpeg")
-                .args([
-                    "-y", "-i", &file.path,
-                    "-c:a", "aac", "-b:a", &bitrate_arg,
-                    "-ac", channels_arg,
-                    "-vn",
-                    temp_aac.to_str().unwrap(),
-                ])
-                .output()
-                .map_err(|e| format!("ffmpeg transcode failed: {}", e))?;
-
-            if !status.status.success() {
-                return Err(format!(
-                    "Transcode failed for {}: {}",
-                    file.path,
-                    String::from_utf8_lossy(&status.stderr)
-                ));
-            }
-            temp_aac_files.push(temp_aac);
+        if CANCEL_FLAG.load(Ordering::Relaxed) {
+            return Err("Cancelled by user".to_string());
         }
 
         emit("merging", 60.0, "Concatenating transcoded files…");
@@ -496,46 +558,38 @@ where
         )?;
 
     } else {
-        // ── Path 3: Mixed — transcode MP3s, then concat all ─────────────────
+        // ── Path 3: Mixed — parallel transcode non-AAC, then concat all ─────
         emit("transcoding", 10.0, "Transcoding non-AAC files…");
 
-        let mp3_count = probed.iter().filter(|f| f.codec != "aac").count();
-        let mut mp3_idx = 0;
-        let mut aac_paths: Vec<PathBuf> = Vec::new();
+        let items: Vec<(usize, String)> = config.files.iter().enumerate()
+            .filter(|(i, _)| probed[*i].codec != "aac")
+            .map(|(i, f)| (i, f.path.clone()))
+            .collect();
 
+        let transcoded = transcode_parallel(
+            &items, tmp_dir.path(), &bitrate_arg, channels_arg,
+            None, &emit, 10.0, 50.0,
+        )?;
+
+        if CANCEL_FLAG.load(Ordering::Relaxed) {
+            return Err("Cancelled by user".to_string());
+        }
+
+        // Build ordered list: original AAC files + transcoded non-AAC
+        let mut transcode_map: HashMap<usize, PathBuf> =
+            items.iter().map(|(idx, _)| *idx).zip(transcoded).collect();
+
+        let mut all_paths: Vec<PathBuf> = Vec::new();
         for (i, file) in config.files.iter().enumerate() {
-            if probed[i].codec == "aac" {
-                aac_paths.push(PathBuf::from(&file.path));
+            if let Some(path) = transcode_map.remove(&i) {
+                all_paths.push(path);
             } else {
-                let pct = 10.0 + (40.0 * (mp3_idx as f64) / mp3_count as f64);
-                emit("transcoding", pct, &format!("Transcoding {} to AAC…", probed[i].filename));
-
-                let temp_aac = tmp_dir.path().join(format!("part_{:04}.m4a", i));
-                let status = Command::new("ffmpeg")
-                    .args([
-                        "-y", "-i", &file.path,
-                        "-c:a", "aac", "-b:a", &bitrate_arg,
-                        "-ac", channels_arg,
-                        "-vn",
-                        temp_aac.to_str().unwrap(),
-                    ])
-                    .output()
-                    .map_err(|e| format!("ffmpeg transcode failed: {}", e))?;
-
-                if !status.status.success() {
-                    return Err(format!(
-                        "Transcode failed for {}: {}",
-                        file.path,
-                        String::from_utf8_lossy(&status.stderr)
-                    ));
-                }
-                aac_paths.push(temp_aac);
-                mp3_idx += 1;
+                all_paths.push(PathBuf::from(&file.path));
             }
         }
 
         emit("merging", 55.0, "Concatenating all files…");
-        let intermediate = concat_aac_files(&aac_paths, tmp_dir.path())?;
+        let intermediate = concat_aac_files(&all_paths, tmp_dir.path())?;
 
         emit("chapters", 80.0, "Adding chapter metadata…");
         add_metadata_and_cover(
@@ -552,14 +606,47 @@ where
 }
 
 #[tauri::command]
-fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<String, String> {
-    merge_audiobook_core(config, |stage, percent, message| {
-        let _ = app.emit("merge-progress", MergeProgress {
-            stage: stage.to_string(),
-            percent,
-            message: message.to_string(),
+fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<(), String> {
+    if IS_CONVERTING.swap(true, Ordering::SeqCst) {
+        return Err("A conversion is already in progress".to_string());
+    }
+    CANCEL_FLAG.store(false, Ordering::SeqCst);
+
+    std::thread::spawn(move || {
+        let result = merge_audiobook_core(config, |stage, percent, message| {
+            let _ = app.emit("merge-progress", MergeProgress {
+                stage: stage.to_string(),
+                percent,
+                message: message.to_string(),
+            });
         });
-    })
+
+        match result {
+            Ok(path) => {
+                if CANCEL_FLAG.load(Ordering::Relaxed) {
+                    let _ = app.emit("merge-cancelled", ());
+                } else {
+                    let _ = app.emit("merge-complete", path);
+                }
+            }
+            Err(e) => {
+                if e.contains("Cancelled") {
+                    let _ = app.emit("merge-cancelled", ());
+                } else {
+                    let _ = app.emit("merge-error", e);
+                }
+            }
+        }
+
+        IS_CONVERTING.store(false, Ordering::SeqCst);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_merge() {
+    CANCEL_FLAG.store(true, Ordering::SeqCst);
 }
 
 pub fn concat_aac_files(files: &[PathBuf], tmp_dir: &Path) -> Result<PathBuf, String> {
@@ -653,6 +740,47 @@ pub fn add_metadata_and_cover(
     Ok(())
 }
 
+// ── Path resolution (folder support) ────────────────────────────────────────
+
+#[tauri::command]
+fn resolve_audio_paths(paths: Vec<String>) -> Vec<String> {
+    let audio_exts = ["mp3", "m4a", "m4b", "aac"];
+    let mut result = Vec::new();
+
+    for path in paths {
+        let p = Path::new(&path);
+        if p.is_dir() {
+            scan_dir_recursive(p, &audio_exts, &mut result);
+        } else if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+            if audio_exts.contains(&ext.to_lowercase().as_str()) {
+                result.push(path);
+            }
+        }
+    }
+
+    result.sort();
+    result
+}
+
+fn scan_dir_recursive(dir: &Path, exts: &[&str], result: &mut Vec<String>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+        entries.sort_by_key(|e| e.path());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                scan_dir_recursive(&path, exts, result);
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if exts.contains(&ext.to_lowercase().as_str()) {
+                    if let Some(s) = path.to_str() {
+                        result.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── Health check ────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -679,6 +807,8 @@ pub fn run() {
             get_cover_art,
             get_merge_plan,
             merge_audiobook,
+            cancel_merge,
+            resolve_audio_paths,
             check_ffmpeg,
         ])
         .run(tauri::generate_context!())

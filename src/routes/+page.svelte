@@ -322,26 +322,58 @@
     }
   }
 
-  // ── Drag reorder ──────────────────────────────────────────────────────────
+  // ── Drag reorder (pointer-based to avoid Tauri OS drop conflict) ────────
 
-  function dragStart(index) {
-    draggedIndex = index;
-  }
+  let pointerDragY = $state(0);
+  let pointerDragActive = $state(false);
 
-  function dragOverItem(e, index) {
+  function dragStart(index, e) {
+    // Only start drag from the drag handle
+    if (!e.target.closest('.drag-handle')) return;
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
-    dropTargetIndex = index;
-    const newFiles = [...files];
-    const [moved] = newFiles.splice(draggedIndex, 1);
-    newFiles.splice(index, 0, moved);
-    files = newFiles;
     draggedIndex = index;
+    pointerDragActive = true;
+    pointerDragY = e.clientY;
+
+    const onMove = (me) => {
+      if (draggedIndex === null) return;
+      pointerDragY = me.clientY;
+      // Find which file item we're over
+      const els = document.querySelectorAll('.file-item');
+      for (const el of els) {
+        const rect = el.getBoundingClientRect();
+        const idx = parseInt(el.dataset.index);
+        if (isNaN(idx) || idx === draggedIndex) continue;
+        if (me.clientY >= rect.top && me.clientY <= rect.bottom) {
+          if (dropTargetIndex !== idx) {
+            dropTargetIndex = idx;
+            const newFiles = [...files];
+            const [moved] = newFiles.splice(draggedIndex, 1);
+            newFiles.splice(idx, 0, moved);
+            files = newFiles;
+            draggedIndex = idx;
+          }
+          break;
+        }
+      }
+    };
+
+    const onUp = () => {
+      draggedIndex = null;
+      dropTargetIndex = null;
+      pointerDragActive = false;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   function dragEnd() {
     draggedIndex = null;
     dropTargetIndex = null;
+    pointerDragActive = false;
   }
 
   // ── Convert ───────────────────────────────────────────────────────────────
@@ -682,15 +714,12 @@
                 class="file-item"
                 class:dragging={draggedIndex === i}
                 class:drop-target={dropTargetIndex === i && draggedIndex !== i}
-                draggable="true"
                 role="option"
                 aria-selected={i === focusedFileIndex}
                 tabindex={i === focusedFileIndex ? 0 : -1}
                 data-index={i}
                 aria-label="Chapter {i + 1}: {file.chapter_name}"
-                ondragstart={() => dragStart(i)}
-                ondragover={(e) => dragOverItem(e, i)}
-                ondragend={dragEnd}
+                onpointerdown={(e) => dragStart(i, e)}
                 onfocus={() => focusedFileIndex = i}
                 in:fade={{ duration: 150 }}
                 out:fade={{ duration: 100 }}
@@ -1229,6 +1258,7 @@
     font-size: 14px;
     cursor: grab;
     user-select: none;
+    touch-action: none;
     opacity: 0.4;
     min-width: 28px;
     min-height: 32px;
@@ -1771,18 +1801,18 @@
     content: "";
     position: absolute;
     top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: -60%;
+    width: 60%;
+    height: 100%;
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(255, 255, 255, 0.18) 40%,
-      rgba(255, 255, 255, 0.18) 60%,
+      rgba(255, 255, 255, 0.35) 45%,
+      rgba(255, 255, 255, 0.45) 50%,
+      rgba(255, 255, 255, 0.35) 55%,
       transparent 100%
     );
-    width: 60%;
-    animation: barSweep 1.8s ease-in-out infinite;
+    animation: barSweep 1.6s ease-in-out infinite;
   }
 
   @keyframes barSweep {

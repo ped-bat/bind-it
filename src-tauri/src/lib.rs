@@ -63,7 +63,7 @@ pub struct MergePlan {
 
 // ── Filename cleaner ────────────────────────────────────────────────────────
 
-fn clean_chapter_name(filename: &str) -> String {
+pub fn clean_chapter_name(filename: &str) -> String {
     // Strip extension
     let name = Path::new(filename)
         .file_stem()
@@ -84,8 +84,7 @@ fn clean_chapter_name(filename: &str) -> String {
 
 // ── Audio probing ───────────────────────────────────────────────────────────
 
-#[tauri::command]
-fn probe_files(paths: Vec<String>) -> Result<Vec<AudioFileInfo>, String> {
+pub fn probe_all_files(paths: Vec<String>) -> Result<Vec<AudioFileInfo>, String> {
     let mut results = Vec::new();
     for path in paths {
         results.push(probe_single_file(&path)?);
@@ -93,7 +92,12 @@ fn probe_files(paths: Vec<String>) -> Result<Vec<AudioFileInfo>, String> {
     Ok(results)
 }
 
-fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
+#[tauri::command]
+fn probe_files(paths: Vec<String>) -> Result<Vec<AudioFileInfo>, String> {
+    probe_all_files(paths)
+}
+
+pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
     let output = Command::new("ffprobe")
         .args([
             "-v", "quiet",
@@ -237,7 +241,7 @@ fn get_cover_art(paths: Vec<String>) -> Option<String> {
 
 #[tauri::command]
 fn get_merge_plan(paths: Vec<String>) -> Result<MergePlan, String> {
-    let files = probe_files(paths)?;
+    let files = probe_all_files(paths)?;
 
     let all_aac = files.iter().all(|f| f.codec == "aac");
     let all_mp3 = files.iter().all(|f| f.codec == "mp3");
@@ -256,6 +260,13 @@ fn get_merge_plan(paths: Vec<String>) -> Result<MergePlan, String> {
                 total_duration,
             });
         }
+
+        // All AAC but mismatched sample rates/channels — need to normalize
+        return Ok(MergePlan {
+            strategy: "transcode_aac".to_string(),
+            needs_transcode: files.iter().map(|f| f.path.clone()).collect(),
+            total_duration,
+        });
     }
 
     if all_mp3 {
@@ -282,7 +293,7 @@ fn get_merge_plan(paths: Vec<String>) -> Result<MergePlan, String> {
 
 // ── Chapter metadata generation ─────────────────────────────────────────────
 
-fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &MergeConfig) -> String {
+pub fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &MergeConfig) -> String {
     let mut meta = String::from(";FFMETADATA1\n");
 
     if let Some(ref t) = metadata.title {
@@ -319,21 +330,17 @@ fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &MergeC
 
 // ── Merge pipeline ──────────────────────────────────────────────────────────
 
-#[tauri::command]
-fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<String, String> {
-    let emit = |stage: &str, percent: f64, message: &str| {
-        let _ = app.emit("merge-progress", MergeProgress {
-            stage: stage.to_string(),
-            percent,
-            message: message.to_string(),
-        });
-    };
+/// Core merge logic, callable without Tauri. The `emit` closure receives progress updates.
+pub fn merge_audiobook_core<F>(config: MergeConfig, emit: F) -> Result<String, String>
+where
+    F: Fn(&str, f64, &str),
+{
 
     emit("preparing", 0.0, "Analyzing files…");
 
     // Probe all files to get durations
     let file_paths: Vec<String> = config.files.iter().map(|f| f.path.clone()).collect();
-    let probed = probe_files(file_paths)?;
+    let probed = probe_all_files(file_paths)?;
     let durations: Vec<f64> = probed.iter().map(|f| f.duration).collect();
 
     let all_aac = probed.iter().all(|f| f.codec == "aac");
@@ -381,6 +388,60 @@ fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<String,
         }
 
         emit("chapters", 60.0, "Adding chapter metadata…");
+        add_metadata_and_cover(
+            intermediate.to_str().unwrap(),
+            output_str,
+            &config,
+            &durations,
+            tmp_dir.path(),
+        )?;
+
+    } else if all_aac {
+        // ── Path 1b: All AAC but mismatched sample rates — normalize ────────
+        // Pick the most common sample rate as the target
+        let mut sr_counts = std::collections::HashMap::new();
+        for p in &probed {
+            *sr_counts.entry(p.sample_rate).or_insert(0u32) += 1;
+        }
+        let target_sr = sr_counts.into_iter().max_by_key(|&(_, count)| count).unwrap().0;
+        let target_sr_arg = target_sr.to_string();
+
+        emit("transcoding", 10.0, "Normalizing sample rates…");
+
+        let total = config.files.len();
+        let mut temp_aac_files: Vec<PathBuf> = Vec::new();
+
+        for (i, file) in config.files.iter().enumerate() {
+            let pct = 10.0 + (50.0 * (i as f64) / total as f64);
+            emit("transcoding", pct, &format!("Normalizing file {} of {}…", i + 1, total));
+
+            let temp_aac = tmp_dir.path().join(format!("part_{:04}.m4a", i));
+            let status = Command::new("ffmpeg")
+                .args([
+                    "-y", "-i", &file.path,
+                    "-c:a", "aac", "-b:a", &bitrate_arg,
+                    "-ar", &target_sr_arg,
+                    "-ac", channels_arg,
+                    "-vn",
+                    temp_aac.to_str().unwrap(),
+                ])
+                .output()
+                .map_err(|e| format!("ffmpeg transcode failed: {}", e))?;
+
+            if !status.status.success() {
+                return Err(format!(
+                    "Transcode failed for {}: {}",
+                    file.path,
+                    String::from_utf8_lossy(&status.stderr)
+                ));
+            }
+            temp_aac_files.push(temp_aac);
+        }
+
+        emit("merging", 60.0, "Concatenating normalized files…");
+        let intermediate = concat_aac_files(&temp_aac_files, tmp_dir.path())?;
+
+        emit("chapters", 80.0, "Adding chapter metadata…");
         add_metadata_and_cover(
             intermediate.to_str().unwrap(),
             output_str,
@@ -490,7 +551,18 @@ fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<String,
     Ok(output_str.to_string())
 }
 
-fn concat_aac_files(files: &[PathBuf], tmp_dir: &Path) -> Result<PathBuf, String> {
+#[tauri::command]
+fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<String, String> {
+    merge_audiobook_core(config, |stage, percent, message| {
+        let _ = app.emit("merge-progress", MergeProgress {
+            stage: stage.to_string(),
+            percent,
+            message: message.to_string(),
+        });
+    })
+}
+
+pub fn concat_aac_files(files: &[PathBuf], tmp_dir: &Path) -> Result<PathBuf, String> {
     let concat_list = tmp_dir.join("concat.txt");
     let mut f = fs::File::create(&concat_list)
         .map_err(|e| format!("Failed to create concat list: {}", e))?;
@@ -520,7 +592,7 @@ fn concat_aac_files(files: &[PathBuf], tmp_dir: &Path) -> Result<PathBuf, String
     Ok(output)
 }
 
-fn add_metadata_and_cover(
+pub fn add_metadata_and_cover(
     input: &str,
     output: &str,
     config: &MergeConfig,

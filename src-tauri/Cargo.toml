@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Bind your audiobook chapters into a single M4B"
 authors = ["Jan Petrov <jan.x.petrov@gmail.com>"]
 edition = "2021"
+default-run = "bindery"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

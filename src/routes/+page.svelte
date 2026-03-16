@@ -18,6 +18,7 @@
   let outputFilename = $state("audiobook");
   let bitrate = $state(64);
   let mono = $state(true);
+  let lossless = $state(true);
   let mergePlan = $state(null);
   let progress = $state({ stage: "", percent: 0, message: "" });
   let outputPath = $state(null);
@@ -249,6 +250,20 @@
     }
   }
 
+  async function browseFolder() {
+    const selected = await open({ directory: true });
+    if (selected) {
+      try {
+        const result = await invoke("resolve_audio_paths", { paths: [toPath(selected)] });
+        if (result.paths.length > 0) {
+          await addFiles(result.paths, result.folder_name);
+        }
+      } catch (e) {
+        error = String(e);
+      }
+    }
+  }
+
   async function browseOutputDir() {
     const selected = await open({ directory: true });
     if (selected) outputDir = toPath(selected);
@@ -374,6 +389,8 @@
       cover_art_path: coverArtPath,
       bitrate,
       mono,
+      force_transcode: !lossless,
+      durations: files.map(f => f.duration),
     };
 
     try {
@@ -451,7 +468,7 @@
 
   function estimateFileSize(durationSec, bitrateKbps) {
     let effectiveBps;
-    if (mergePlan?.strategy === "remux") {
+    if (lossless && mergePlan?.strategy === "remux") {
       // Use actual average bitrate from source files (bitrate is in bps)
       const totalBitrate = files.reduce((sum, f) => sum + (f.bitrate || 0), 0);
       effectiveBps = files.length > 0 ? totalBitrate / files.length : bitrateKbps * 1000;
@@ -639,8 +656,9 @@
         <p class="drop-title">Drop files or folders here</p>
         <p class="drop-subtitle">MP3, M4A, M4B, AAC</p>
         <div class="drop-buttons">
-          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse</button>
+          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse files</button>
         </div>
+        <button class="btn-drop-folder" onclick={(e) => { e.stopPropagation(); browseFolder(); }}>or select a folder</button>
         <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O to open files</p>
       </div>
     {:else}
@@ -654,6 +672,7 @@
                 <span class="spinner-inline"></span>
               {/if}
               <button class="btn-text" onclick={browseFiles}>+ Add files</button>
+              <button class="btn-text" onclick={browseFolder}>+ Add folder</button>
               <button class="btn-text btn-text-danger" onclick={clearAll}>Clear all</button>
             </div>
           </div>
@@ -765,12 +784,44 @@
           </section>
         </div>
 
-        <!-- Encoding settings (shown when transcoding needed) -->
-        {#if needsTranscode}
+        <!-- Encoding settings -->
+        {#if mergePlan}
           <section class="panel encoding-panel">
             <h2>Encoding</h2>
-            <p class="transcode-notice">{strategyLabel}</p>
-            {#if mergePlan.strategy !== "remux"}
+            <div class="encoding-toggle-row">
+              <label class="checkbox-label">
+                <input type="checkbox" bind:checked={lossless} />
+                <span>Lossless</span>
+              </label>
+              {#if lossless}
+                {#if mergePlan.strategy === "remux"}
+                  <span class="transcode-notice">Remux — no re-encoding needed</span>
+                {:else}
+                  <span class="transcode-notice transcode-warn">Transcoding required for non-AAC files</span>
+                {/if}
+              {:else}
+                <span class="transcode-notice">All files will be transcoded to AAC</span>
+              {/if}
+            </div>
+            {#if !lossless}
+              <div class="encoding-fields">
+                <label>
+                  <span>Bitrate</span>
+                  <select bind:value={bitrate}>
+                    <option value={64}>64 kbps</option>
+                    <option value={96}>96 kbps</option>
+                    <option value={128}>128 kbps</option>
+                    <option value={192}>192 kbps</option>
+                    <option value={256}>256 kbps</option>
+                    <option value={320}>320 kbps</option>
+                  </select>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" bind:checked={mono} />
+                  <span>Mono (recommended for spoken word)</span>
+                </label>
+              </div>
+            {:else if needsTranscode && mergePlan.strategy !== "remux"}
               <div class="encoding-fields">
                 <label>
                   <span>Bitrate</span>
@@ -805,7 +856,7 @@
             onclick={startConvert}
             disabled={files.length < 1 || !ffmpegOk}
           >
-            {needsTranscode ? "Bind audiobook (transcoding)" : "Bind audiobook"}
+            {!lossless || needsTranscode ? "Bind audiobook (transcoding)" : "Bind audiobook"}
           </button>
           <p class="shortcut-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵</p>
         </div>
@@ -1026,6 +1077,24 @@
   .btn-drop-browse:hover {
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  }
+
+  .btn-drop-folder {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: var(--radius);
+    transition: color var(--transition);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .btn-drop-folder:hover {
+    color: var(--accent);
   }
 
   .drop-hint {
@@ -1516,10 +1585,21 @@
 
   /* ── Encoding ──────────────────────────────────────────────────────── */
 
+  .encoding-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .transcode-warn {
+    color: var(--accent);
+  }
+
   .transcode-notice {
     font-size: 12px;
     color: var(--text-secondary);
-    margin: 0 0 8px 0;
+    margin: 0;
   }
 
   .encoding-fields {
@@ -1929,6 +2009,7 @@
   }
 
   .btn-drop-browse:focus-visible,
+  .btn-drop-folder:focus-visible,
   .btn-text:focus-visible,
   .btn-browse:focus-visible,
   .btn-convert:focus-visible,

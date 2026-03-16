@@ -52,6 +52,8 @@ fn main() {
         cover_art_path: None,
         bitrate: 64,
         mono: true,
+        force_transcode: false,
+        durations: None,
     };
 
     let t1 = Instant::now();

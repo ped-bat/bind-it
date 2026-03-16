@@ -58,6 +58,10 @@ pub struct MergeConfig {
     pub cover_art_path: Option<String>,
     pub bitrate: u32,     // kbps
     pub mono: bool,
+    #[serde(default)]
+    pub force_transcode: bool,
+    #[serde(default)]
+    pub durations: Option<Vec<f64>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -740,15 +744,37 @@ where
         return Err("Cancelled by user".to_string());
     }
 
-    // Probe all files to get durations
+    // Use cached durations from frontend if available, otherwise probe
     let file_paths: Vec<String> = config.files.iter().map(|f| f.path.clone()).collect();
-    let probed = probe_all_files(file_paths)?;
-    if probed.is_empty() {
-        return Err("No valid audio files to merge.".to_string());
-    }
-    let durations: Vec<f64> = probed.iter().map(|f| f.duration).collect();
+    let (probed, durations) = if let Some(ref cached) = config.durations {
+        if cached.len() == config.files.len() {
+            // Still need codec info — probe but reuse cached durations
+            let probed = probe_all_files(file_paths)?;
+            if probed.is_empty() {
+                return Err("No valid audio files to merge.".to_string());
+            }
+            (probed, cached.clone())
+        } else {
+            let probed = probe_all_files(file_paths)?;
+            if probed.is_empty() {
+                return Err("No valid audio files to merge.".to_string());
+            }
+            let durations: Vec<f64> = probed.iter().map(|f| f.duration).collect();
+            (probed, durations)
+        }
+    } else {
+        let probed = probe_all_files(file_paths)?;
+        if probed.is_empty() {
+            return Err("No valid audio files to merge.".to_string());
+        }
+        let durations: Vec<f64> = probed.iter().map(|f| f.duration).collect();
+        (probed, durations)
+    };
 
-    let all_aac = probed.iter().all(|f| f.codec == "aac");
+    // If force_transcode is set, skip codec detection and always transcode
+    let force = config.force_transcode;
+
+    let all_aac = !force && probed.iter().all(|f| f.codec == "aac");
     let all_mp3 = probed.iter().all(|f| f.codec == "mp3");
     let uniform_aac = all_aac && {
         let sr = probed[0].sample_rate;
@@ -794,6 +820,7 @@ where
             .args([
                 "-y", "-f", "concat", "-safe", "0",
                 "-i", concat_list.to_str().unwrap(),
+                "-map", "0:a",
                 "-c", "copy",
                 intermediate.to_str().unwrap(),
             ])
@@ -916,7 +943,7 @@ where
         )?;
 
     } else {
-        // ── Path 3: Mixed — parallel transcode non-AAC, then concat all ─────
+        // ── Path 3: Mixed / force transcode — parallel transcode, then concat ─
         // Detect the most common sample rate among ALL files for consistency
         let mut sr_counts = HashMap::new();
         for p in &probed {
@@ -924,22 +951,34 @@ where
         }
         let target_sr = sr_counts.into_iter().max_by_key(|&(_, count)| count).unwrap().0;
 
-        emit("transcoding", 10.0, "Transcoding non-AAC files…");
+        if force {
+            emit("transcoding", 10.0, "Transcoding all files to AAC…");
+        } else {
+            emit("transcoding", 10.0, "Transcoding non-AAC files…");
+        }
 
-        // Transcode all non-AAC files to AAC at the target sample rate
-        let non_aac_items: Vec<(usize, String)> = config.files.iter().enumerate()
-            .filter(|(i, _)| probed[*i].codec != "aac")
-            .map(|(i, f)| (i, f.path.clone()))
-            .collect();
+        let all_items: Vec<(usize, String)> = if force {
+            // Force transcode: transcode ALL files regardless of codec
+            config.files.iter().enumerate()
+                .map(|(i, f)| (i, f.path.clone()))
+                .collect()
+        } else {
+            // Transcode all non-AAC files to AAC at the target sample rate
+            let non_aac_items: Vec<(usize, String)> = config.files.iter().enumerate()
+                .filter(|(i, _)| probed[*i].codec != "aac")
+                .map(|(i, f)| (i, f.path.clone()))
+                .collect();
 
-        // Also transcode AAC files whose sample rate doesn't match the target
-        let mismatched_aac_items: Vec<(usize, String)> = config.files.iter().enumerate()
-            .filter(|(i, _)| probed[*i].codec == "aac" && probed[*i].sample_rate != target_sr)
-            .map(|(i, f)| (i, f.path.clone()))
-            .collect();
+            // Also transcode AAC files whose sample rate doesn't match the target
+            let mismatched_aac_items: Vec<(usize, String)> = config.files.iter().enumerate()
+                .filter(|(i, _)| probed[*i].codec == "aac" && probed[*i].sample_rate != target_sr)
+                .map(|(i, f)| (i, f.path.clone()))
+                .collect();
 
-        let mut all_items = non_aac_items;
-        all_items.extend(mismatched_aac_items);
+            let mut items = non_aac_items;
+            items.extend(mismatched_aac_items);
+            items
+        };
 
         let transcoded = transcode_parallel(
             &all_items, tmp_dir.path(), &bitrate_arg, channels_arg,
@@ -1050,6 +1089,7 @@ pub fn concat_aac_files(files: &[PathBuf], tmp_dir: &Path) -> Result<PathBuf, St
         .args([
             "-y", "-f", "concat", "-safe", "0",
             "-i", concat_list.to_str().unwrap(),
+            "-map", "0:a",
             "-c", "copy",
             output.to_str().unwrap(),
         ])

@@ -112,6 +112,8 @@ fn run_test_case(name: &str, test_path: &PathBuf, output_dir: &PathBuf) -> Resul
         cover_art_path: None,
         bitrate: 64,
         mono: false,
+        force_transcode: false,
+        durations: None,
     };
 
     // Run merge

@@ -601,16 +601,37 @@ where
 
                 args.push(temp_str);
 
-                let output = Command::new("ffmpeg")
+                let mut child = Command::new("ffmpeg")
                     .args(&args)
-                    .output()
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
                     .map_err(|e| format!("ffmpeg transcode failed: {}", e))?;
 
-                if !output.status.success() {
+                let status = loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) => break status,
+                        Ok(None) => {
+                            if CANCEL_FLAG.load(Ordering::Relaxed) {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                                return Err("Cancelled by user".to_string());
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                        Err(e) => return Err(format!("ffmpeg wait error: {}", e)),
+                    }
+                };
+
+                if !status.success() {
+                    let stderr = child.stderr.take().map(|mut e| {
+                        let mut s = String::new();
+                        std::io::Read::read_to_string(&mut e, &mut s).ok();
+                        s
+                    }).unwrap_or_default();
                     return Err(format!(
                         "Transcode failed for {}: {}",
-                        path,
-                        String::from_utf8_lossy(&output.stderr)
+                        path, stderr
                     ));
                 }
 
@@ -644,17 +665,23 @@ fn is_temp_path(path: &str) -> bool {
 // ── Unique filename helper ──────────────────────────────────────────────────
 
 fn unique_output_path(dir: &Path, filename: &str) -> PathBuf {
-    let candidate = dir.join(format!("{}.m4b", filename));
+    // Strip trailing .m4b (case-insensitive) to avoid double extension
+    let name = if filename.to_lowercase().ends_with(".m4b") {
+        &filename[..filename.len() - 4]
+    } else {
+        filename
+    };
+    let candidate = dir.join(format!("{}.m4b", name));
     if !candidate.exists() {
         return candidate;
     }
     for i in 1..=999 {
-        let candidate = dir.join(format!("{} ({}).m4b", filename, i));
+        let candidate = dir.join(format!("{} ({}).m4b", name, i));
         if !candidate.exists() {
             return candidate;
         }
     }
-    dir.join(format!("{} (999).m4b", filename))
+    dir.join(format!("{} (999).m4b", name))
 }
 
 // ── Error categorization ────────────────────────────────────────────────────
@@ -763,20 +790,43 @@ where
 
         // Concat to intermediate file
         let intermediate = tmp_dir.path().join("merged.m4a");
-        let status = Command::new("ffmpeg")
+        let mut child = Command::new("ffmpeg")
             .args([
                 "-y", "-f", "concat", "-safe", "0",
                 "-i", concat_list.to_str().unwrap(),
                 "-c", "copy",
                 intermediate.to_str().unwrap(),
             ])
-            .output()
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| format!("ffmpeg concat failed: {}", e))?;
 
-        if !status.status.success() {
-            return Err(format!("ffmpeg concat failed: {}", String::from_utf8_lossy(&status.stderr)));
+        let exit_status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    if CANCEL_FLAG.load(Ordering::Relaxed) {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err("Cancelled by user".to_string());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                Err(e) => return Err(format!("ffmpeg concat wait error: {}", e)),
+            }
+        };
+
+        if !exit_status.success() {
+            let stderr = child.stderr.take().map(|mut e| {
+                let mut s = String::new();
+                std::io::Read::read_to_string(&mut e, &mut s).ok();
+                s
+            }).unwrap_or_default();
+            return Err(format!("ffmpeg concat failed: {}", stderr));
         }
 
+        emit("merging", 50.0, "Merge complete, finalizing…");
         emit("chapters", 60.0, "Adding chapter metadata…");
         add_metadata_and_cover(
             intermediate.to_str().unwrap(),
@@ -996,20 +1046,42 @@ pub fn concat_aac_files(files: &[PathBuf], tmp_dir: &Path) -> Result<PathBuf, St
     }
 
     let output = tmp_dir.join("merged.m4a");
-    let status = Command::new("ffmpeg")
+    let mut child = Command::new("ffmpeg")
         .args([
             "-y", "-f", "concat", "-safe", "0",
             "-i", concat_list.to_str().unwrap(),
             "-c", "copy",
             output.to_str().unwrap(),
         ])
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("ffmpeg concat failed: {}", e))?;
 
-    if !status.status.success() {
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if CANCEL_FLAG.load(Ordering::Relaxed) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("Cancelled by user".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => return Err(format!("ffmpeg concat wait error: {}", e)),
+        }
+    };
+
+    if !status.success() {
+        let stderr = child.stderr.take().map(|mut e| {
+            let mut s = String::new();
+            std::io::Read::read_to_string(&mut e, &mut s).ok();
+            s
+        }).unwrap_or_default();
         return Err(format!(
             "ffmpeg concat failed: {}",
-            String::from_utf8_lossy(&status.stderr)
+            stderr
         ));
     }
 

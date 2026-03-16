@@ -45,9 +45,9 @@ Domain: `bindery.audio`
 
 ## Typography
 
-- **Brand / headings:** Instrument Serif (Google Fonts) — literary, warm, editorial
+- **Logo / brand mark:** Instrument Serif — used only in the logo lockup, splash screen, and marketing. Not in app UI.
   - Fallback: Georgia, serif
-- **UI / body:** Inter (system-available on most platforms) — clean, readable, neutral
+- **UI (everything in the app):** Inter — headings, body, labels, title bar, buttons. One font, consistent.
   - Fallback: system-ui, -apple-system, sans-serif
 - **Monospace (file paths, technical):** JetBrains Mono or SF Mono
   - Fallback: ui-monospace, monospace

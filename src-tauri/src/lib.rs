@@ -17,6 +17,14 @@ static CANCEL_FLAG: AtomicBool = AtomicBool::new(false);
 static IS_CONVERTING: AtomicBool = AtomicBool::new(false);
 static LAST_EXTRACTED_COVER: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
 
+struct ConvertGuard;
+
+impl Drop for ConvertGuard {
+    fn drop(&mut self) {
+        IS_CONVERTING.store(false, Ordering::SeqCst);
+    }
+}
+
 // ── Data types ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -519,6 +527,7 @@ pub fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &Me
     if let Some(ref y) = metadata.year {
         meta.push_str(&format!("date={}\n", y));
     }
+    meta.push_str("genre=Audiobook\n");
     meta.push('\n');
 
     let mut cumulative_ms: u64 = 0;
@@ -936,6 +945,7 @@ fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<(), Str
     CANCEL_FLAG.store(false, Ordering::SeqCst);
 
     std::thread::spawn(move || {
+        let _guard = ConvertGuard;
         let result = merge_audiobook_core(config, |stage, percent, message| {
             let _ = app.emit("merge-progress", MergeProgress {
                 stage: stage.to_string(),
@@ -966,7 +976,6 @@ fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<(), Str
             }
         }
 
-        IS_CONVERTING.store(false, Ordering::SeqCst);
     });
 
     Ok(())

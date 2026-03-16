@@ -6,4 +6,6 @@ build/
 .DS_Store
 *.swp
 .env
+test-audiobooks/
+*.m4b
 

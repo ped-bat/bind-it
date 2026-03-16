@@ -513,23 +513,41 @@ fn get_merge_plan(paths: Vec<String>) -> Result<MergePlan, String> {
 
 // ── Chapter metadata generation ─────────────────────────────────────────────
 
+fn escape_ffmetadata(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '=' | ';' | '#' | '\\' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            '\n' => {
+                escaped.push('\\');
+                escaped.push('n');
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
 pub fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &MergeConfig) -> String {
     let mut meta = String::from(";FFMETADATA1\n");
 
     if let Some(ref t) = metadata.title {
-        meta.push_str(&format!("title={}\n", t));
+        meta.push_str(&format!("title={}\n", escape_ffmetadata(t)));
     }
     if let Some(ref a) = metadata.artist {
-        meta.push_str(&format!("artist={}\n", a));
+        meta.push_str(&format!("artist={}\n", escape_ffmetadata(a)));
     }
     if let Some(ref al) = metadata.album {
-        meta.push_str(&format!("album={}\n", al));
+        meta.push_str(&format!("album={}\n", escape_ffmetadata(al)));
     }
     if let Some(ref n) = metadata.narrator {
-        meta.push_str(&format!("composer={}\n", n));
+        meta.push_str(&format!("composer={}\n", escape_ffmetadata(n)));
     }
     if let Some(ref y) = metadata.year {
-        meta.push_str(&format!("date={}\n", y));
+        meta.push_str(&format!("date={}\n", escape_ffmetadata(y)));
     }
     meta.push_str("genre=Audiobook\n");
     meta.push('\n');
@@ -542,7 +560,7 @@ pub fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &Me
         meta.push_str(&format!("START={}\n", cumulative_ms));
         cumulative_ms += duration_ms;
         meta.push_str(&format!("END={}\n", cumulative_ms));
-        meta.push_str(&format!("title={}\n", file.chapter_name));
+        meta.push_str(&format!("title={}\n", escape_ffmetadata(&file.chapter_name)));
         meta.push('\n');
     }
 
@@ -1184,16 +1202,35 @@ pub fn add_metadata_and_cover(
         output.into(),
     ]);
 
-    let status = Command::new("ffmpeg")
+    let mut child = Command::new("ffmpeg")
         .args(&args)
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("ffmpeg metadata failed: {}", e))?;
 
-    if !status.status.success() {
-        return Err(format!(
-            "ffmpeg metadata failed: {}",
-            String::from_utf8_lossy(&status.stderr)
-        ));
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if CANCEL_FLAG.load(Ordering::Relaxed) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("Cancelled by user".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => return Err(format!("ffmpeg wait error: {}", e)),
+        }
+    };
+
+    if !status.success() {
+        let stderr = child.stderr.take().map(|mut e| {
+            let mut s = String::new();
+            std::io::Read::read_to_string(&mut e, &mut s).ok();
+            s
+        }).unwrap_or_default();
+        return Err(format!("ffmpeg metadata failed: {}", stderr));
     }
 
     Ok(())

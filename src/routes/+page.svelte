@@ -326,6 +326,26 @@
     if (files.length < 1 || !outputDir || !outputFilename) return;
     error = null;
     outputPath = null;
+
+    // Run preflight checks before starting conversion
+    try {
+      const preflight = await invoke("preflight_check", {
+        files: files.map(f => f.path),
+        outputDir,
+      });
+      if (!preflight.ok) {
+        error = preflight.errors.join("\n");
+        return;
+      }
+      if (preflight.warnings.length > 0) {
+        error = preflight.warnings.join("\n");
+        // Show warnings but allow proceeding
+      }
+    } catch (e) {
+      error = String(e);
+      return;
+    }
+
     progress = { stage: "preparing", percent: 0, message: "Starting\u2026" };
 
     appState = "converting";
@@ -538,7 +558,14 @@
 
     {#if error}
       <div class="error-banner" transition:slide>
-        <span>{error}</span>
+        <div class="error-content">
+          {#each error.split("\n") as line}
+            <span class="error-line">{line}</span>
+          {/each}
+          {#if error.includes("disk space") || error.includes("Permission denied") || error.includes("moved or deleted")}
+            <span class="error-retry">Fix the issue above, then try again.</span>
+          {/if}
+        </div>
         <button class="error-dismiss" onclick={() => error = null} title="Dismiss (Esc)" aria-label="Dismiss error">×</button>
       </div>
     {/if}
@@ -825,7 +852,7 @@
 
   .error-banner {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     background: color-mix(in srgb, var(--error) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
@@ -835,6 +862,25 @@
     font-size: 12px;
     flex-shrink: 0;
     animation: fadeIn 150ms ease-out;
+  }
+
+  .error-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .error-line {
+    display: block;
+  }
+
+  .error-retry {
+    display: block;
+    margin-top: 4px;
+    opacity: 0.7;
+    font-style: italic;
   }
 
   .error-dismiss {

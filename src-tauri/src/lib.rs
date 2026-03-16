@@ -69,6 +69,80 @@ pub struct MergePlan {
     pub total_duration: f64,
 }
 
+// ── Preflight check ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PreflightResult {
+    pub ok: bool,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+fn preflight_check(files: Vec<String>, output_dir: String) -> PreflightResult {
+    let warnings = Vec::new();
+    let mut errors = Vec::new();
+
+    // Check all input files still exist and are readable
+    for path in &files {
+        let p = Path::new(path);
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or(path);
+        if !p.exists() {
+            errors.push(format!("Source file was moved or deleted: {}. Re-add your files and try again.", name));
+        } else if fs::metadata(p).is_err() {
+            errors.push(format!("Could not read {}. The file may be corrupted.", name));
+        }
+    }
+
+    // Check output directory is writable
+    let out = Path::new(&output_dir);
+    if !out.exists() {
+        match fs::create_dir_all(out) {
+            Ok(_) => {}
+            Err(e) => {
+                let msg = format!("{}", e);
+                if msg.contains("Permission denied") || msg.contains("EACCES") {
+                    errors.push("Permission denied — choose a different output folder or check folder permissions.".to_string());
+                } else {
+                    errors.push(format!("Cannot create output directory: {}", msg));
+                }
+            }
+        }
+    }
+    if out.exists() {
+        let test_file = out.join(".bindery_write_test");
+        match fs::File::create(&test_file) {
+            Ok(_) => {
+                let _ = fs::remove_file(&test_file);
+            }
+            Err(e) => {
+                let msg = format!("{}", e);
+                if msg.contains("Permission denied") || msg.contains("EACCES") {
+                    errors.push("Permission denied — choose a different output folder or check folder permissions.".to_string());
+                } else if msg.contains("No space left") || msg.contains("ENOSPC") {
+                    errors.push("Not enough disk space. Free up space or choose a different drive.".to_string());
+                } else {
+                    errors.push(format!("Output folder is not writable: {}", msg));
+                }
+            }
+        }
+    }
+
+    // Check ffmpeg/ffprobe are available
+    if Command::new("ffmpeg").arg("-version").output().is_err() {
+        errors.push("ffmpeg is required but not installed. Install it with: brew install ffmpeg".to_string());
+    }
+    if Command::new("ffprobe").arg("-version").output().is_err() {
+        errors.push("ffprobe is required but not installed. Install it with: brew install ffmpeg".to_string());
+    }
+
+    PreflightResult {
+        ok: errors.is_empty(),
+        warnings,
+        errors,
+    }
+}
+
 // ── Filename cleaner ────────────────────────────────────────────────────────
 
 pub fn clean_chapter_name(filename: &str) -> String {
@@ -492,6 +566,49 @@ fn unique_output_path(dir: &Path, filename: &str) -> PathBuf {
     dir.join(format!("{} (999).m4b", filename))
 }
 
+// ── Error categorization ────────────────────────────────────────────────────
+
+fn categorize_error(err: &str) -> String {
+    if err.contains("Permission denied") || err.contains("EACCES") {
+        "Permission denied — choose a different output folder or check folder permissions.".to_string()
+    } else if err.contains("No space left") || err.contains("Disk full") || err.contains("ENOSPC") {
+        "Not enough disk space. Free up space or choose a different drive.".to_string()
+    } else if err.contains("No such file or directory") {
+        // Try to extract the filename from the error
+        if let Some(pos) = err.find("No such file or directory") {
+            let prefix = &err[..pos];
+            if let Some(path_part) = prefix.rsplit(&[':', ' '][..]).find(|s| s.contains('/') || s.contains('.')) {
+                let name = Path::new(path_part).file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(path_part);
+                return format!("Source file was moved or deleted: {}. Re-add your files and try again.", name);
+            }
+        }
+        "A source file was moved or deleted. Re-add your files and try again.".to_string()
+    } else if err.contains("Failed to run ffprobe") || err.contains("Failed to run ffmpeg")
+        || err.contains("ffmpeg transcode failed") || err.contains("No such file or directory: ffmpeg")
+        || err.contains("No such file or directory: ffprobe")
+    {
+        "ffmpeg is required but not installed. Install it with: brew install ffmpeg".to_string()
+    } else if err.contains("No audio stream") || err.contains("Invalid data found")
+        || err.contains("could not find codec") || err.contains("Invalid argument")
+    {
+        // Try to extract filename
+        if let Some(start) = err.find("for ") {
+            let rest = &err[start + 4..];
+            let path_end = rest.find(':').unwrap_or(rest.len());
+            let path = &rest[..path_end];
+            let name = Path::new(path).file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(path);
+            return format!("Could not read {}. The file may be corrupted.", name);
+        }
+        "Could not read a source file. The file may be corrupted.".to_string()
+    } else {
+        format!("Conversion failed: {}", err)
+    }
+}
+
 // ── Merge pipeline ──────────────────────────────────────────────────────────
 
 /// Core merge logic, callable without Tauri. The `emit` closure receives progress updates.
@@ -715,16 +832,7 @@ fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<(), Str
                 if e.contains("Cancelled") {
                     let _ = app.emit("merge-cancelled", ());
                 } else {
-                    // Detect disk-full errors
-                    let msg = if e.contains("No space left")
-                        || e.contains("Disk full")
-                        || e.contains("ENOSPC")
-                        || e.contains("28")
-                    {
-                        "Disk full — not enough space to create the audiobook. Free up disk space and try again.".to_string()
-                    } else {
-                        e
-                    };
+                    let msg = categorize_error(&e);
                     let _ = app.emit("merge-error", msg);
                 }
             }
@@ -930,6 +1038,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            preflight_check,
             probe_files,
             get_cover_art,
             get_merge_plan,

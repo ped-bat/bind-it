@@ -602,6 +602,20 @@ where
     })
 }
 
+// ── Temp path detection ─────────────────────────────────────────────────────
+
+/// Returns true if `path` lives inside the system temp directory,
+/// meaning it was created by us (not supplied by the user).
+fn is_temp_path(path: &str) -> bool {
+    let Ok(tmp) = std::fs::canonicalize(std::env::temp_dir()) else {
+        return false;
+    };
+    let Ok(canonical) = std::fs::canonicalize(path) else {
+        return false;
+    };
+    canonical.starts_with(&tmp)
+}
+
 // ── Unique filename helper ──────────────────────────────────────────────────
 
 fn unique_output_path(dir: &Path, filename: &str) -> PathBuf {
@@ -867,6 +881,13 @@ where
             &durations,
             tmp_dir.path(),
         )?;
+    }
+
+    // Clean up extracted cover art temp file (not user-supplied images)
+    if let Some(ref cover_path) = config.cover_art_path {
+        if is_temp_path(cover_path) {
+            let _ = fs::remove_file(cover_path);
+        }
     }
 
     emit("done", 100.0, "Audiobook created successfully!");

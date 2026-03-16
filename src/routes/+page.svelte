@@ -1088,8 +1088,8 @@
   }
 
   .drop-icon {
-    color: var(--text-secondary);
-    opacity: 0.5;
+    color: var(--accent);
+    opacity: 0.8;
     transition: all var(--transition);
   }
 

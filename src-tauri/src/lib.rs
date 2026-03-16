@@ -15,6 +15,7 @@ use tauri::Emitter;
 
 static CANCEL_FLAG: AtomicBool = AtomicBool::new(false);
 static IS_CONVERTING: AtomicBool = AtomicBool::new(false);
+static LAST_EXTRACTED_COVER: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -342,6 +343,13 @@ pub struct CoverArtResult {
 
 #[tauri::command]
 fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
+    // Clean up previous extracted temp cover art
+    if let Ok(mut prev) = LAST_EXTRACTED_COVER.lock() {
+        if let Some(old_path) = prev.take() {
+            let _ = fs::remove_file(&old_path);
+        }
+    }
+
     if paths.is_empty() {
         return None;
     }
@@ -389,6 +397,10 @@ fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
         if output.status.success() && tmp.exists() && tmp.metadata().map(|m| m.len() > 0).unwrap_or(false) {
             if let Ok(data) = fs::read(&tmp) {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                // Track this temp file for cleanup on next call
+                if let Ok(mut prev) = LAST_EXTRACTED_COVER.lock() {
+                    *prev = Some(tmp.clone());
+                }
                 return Some(CoverArtResult {
                     data_uri: format!("data:image/jpeg;base64,{}", b64),
                     file_path: tmp.to_str().unwrap_or("").to_string(),
@@ -691,6 +703,9 @@ where
     // Probe all files to get durations
     let file_paths: Vec<String> = config.files.iter().map(|f| f.path.clone()).collect();
     let probed = probe_all_files(file_paths)?;
+    if probed.is_empty() {
+        return Err("No valid audio files to merge.".to_string());
+    }
     let durations: Vec<f64> = probed.iter().map(|f| f.duration).collect();
 
     let all_aac = probed.iter().all(|f| f.codec == "aac");
@@ -1103,7 +1118,13 @@ fn scan_dir_recursive(dir: &Path, exts: &[&str], result: &mut Vec<String>) {
         entries.sort_by_key(|e| e.path());
         for entry in entries {
             let path = entry.path();
+            // Skip symlinked directories to avoid infinite loops from circular symlinks
             if path.is_dir() {
+                if let Ok(meta) = fs::symlink_metadata(&path) {
+                    if meta.file_type().is_symlink() {
+                        continue;
+                    }
+                }
                 scan_dir_recursive(&path, exts, result);
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 if exts.contains(&ext.to_lowercase().as_str()) {

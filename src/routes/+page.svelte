@@ -248,20 +248,6 @@
     }
   }
 
-  async function browseFolders() {
-    const selected = await open({ directory: true, multiple: true });
-    if (selected) {
-      try {
-        const result = await invoke("resolve_audio_paths", { paths: toPaths(selected) });
-        if (result.paths.length > 0) {
-          await addFiles(result.paths, result.folder_name);
-        }
-      } catch (e) {
-        error = String(e);
-      }
-    }
-  }
-
   async function browseOutputDir() {
     const selected = await open({ directory: true });
     if (selected) outputDir = toPath(selected);
@@ -502,7 +488,11 @@
       const idx = focusedFileIndex;
       removeFile(idx);
       announce(`Removed chapter ${idx + 1}`);
-      focusedFileIndex = Math.min(idx, files.length - 2);
+      if (files.length === 0) {
+        focusedFileIndex = -1;
+      } else {
+        focusedFileIndex = Math.max(0, Math.min(idx, files.length - 1));
+      }
       requestAnimationFrame(() => {
         focusEl(`.file-item[data-index="${focusedFileIndex}"]`);
       });

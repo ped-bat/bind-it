@@ -26,6 +26,8 @@
   let draggedIndex = $state(null);
   let dropTargetIndex = $state(null);
   let probing = $state(false);
+  let liveAnnouncement = $state("");
+  let focusedFileIndex = $state(-1);
 
   // Conversion timing
   let elapsedSeconds = $state(0);
@@ -68,12 +70,14 @@
         totalDuration: totalDuration(),
       };
       appState = "complete";
+      announce("Audiobook created successfully");
     });
 
     unlistenError = await listen("merge-error", (event) => {
       stopTimer();
       error = String(event.payload);
       appState = "setup";
+      announce("Conversion failed: " + String(event.payload));
     });
 
     unlistenCancelled = await listen("merge-cancelled", () => {
@@ -179,6 +183,7 @@
         error = result.warnings.join("\n");
       }
       files = [...files, ...probed];
+      if (probed.length > 0) announce(`${probed.length} file${probed.length !== 1 ? "s" : ""} added`);
 
       if (files.length > 0 && !outputDir) {
         const firstPath = files[0].path;
@@ -325,6 +330,7 @@
 
     appState = "converting";
     startTimer();
+    announce("Conversion started");
 
     const config = {
       files: files.map(f => ({ path: f.path, chapter_name: f.chapter_name })),
@@ -420,6 +426,38 @@
     return `~${(bytes / 1024).toFixed(0)} KB`;
   }
 
+  function announce(msg) {
+    liveAnnouncement = "";
+    requestAnimationFrame(() => { liveAnnouncement = msg; });
+  }
+
+  function handleFileListKeydown(e) {
+    if (files.length === 0) return;
+    const focusEl = (sel) => /** @type {HTMLElement|null} */ (document.querySelector(sel))?.focus();
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      focusedFileIndex = Math.min(focusedFileIndex + 1, files.length - 1);
+      focusEl(`.file-item[data-index="${focusedFileIndex}"]`);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      focusedFileIndex = Math.max(focusedFileIndex - 1, 0);
+      focusEl(`.file-item[data-index="${focusedFileIndex}"]`);
+    } else if (e.key === "Enter" && focusedFileIndex >= 0) {
+      e.preventDefault();
+      focusEl(`.file-item[data-index="${focusedFileIndex}"] .chapter-name`);
+    } else if ((e.key === "Delete" || e.key === "Backspace") && focusedFileIndex >= 0) {
+      if (/** @type {HTMLElement} */ (e.target).tagName === "INPUT") return;
+      e.preventDefault();
+      const idx = focusedFileIndex;
+      removeFile(idx);
+      announce(`Removed chapter ${idx + 1}`);
+      focusedFileIndex = Math.min(idx, files.length - 2);
+      requestAnimationFrame(() => {
+        focusEl(`.file-item[data-index="${focusedFileIndex}"]`);
+      });
+    }
+  }
+
   let needsTranscode = $derived(mergePlan && mergePlan.needs_transcode.length > 0);
   let strategyLabel = $derived(
     mergePlan?.strategy === "remux" ? "Lossless remux (no re-encoding)" :
@@ -427,6 +465,8 @@
     "Transcode non-AAC files to AAC"
   );
 </script>
+
+<div class="sr-only" aria-live="polite" aria-atomic="true">{liveAnnouncement}</div>
 
 <main>
   {#if appState === "converting"}
@@ -439,14 +479,14 @@
       <div class="converting-content">
         <div class="converting-progress">
           <p class="converting-percent"><span class="percent-value">{Math.round(progress.percent)}</span>%</p>
-          <div class="converting-bar-track">
+          <div class="converting-bar-track" role="progressbar" aria-valuenow={Math.round(progress.percent)} aria-valuemin={0} aria-valuemax={100} aria-label="Conversion progress">
             <div class="converting-bar-fill" style="width: {progress.percent}%"></div>
           </div>
           <p class="converting-message">{progress.message}</p>
           <p class="converting-elapsed">{formatElapsed(elapsedSeconds)}</p>
         </div>
 
-        <button class="btn-cancel" onclick={cancelConvert}>Cancel</button>
+        <button class="btn-cancel" onclick={cancelConvert} aria-label="Cancel conversion">Cancel</button>
       </div>
     </div>
 
@@ -499,7 +539,7 @@
     {#if error}
       <div class="error-banner" transition:slide>
         <span>{error}</span>
-        <button class="error-dismiss" onclick={() => error = null} title="Dismiss (Esc)">×</button>
+        <button class="error-dismiss" onclick={() => error = null} title="Dismiss (Esc)" aria-label="Dismiss error">×</button>
       </div>
     {/if}
 
@@ -515,7 +555,8 @@
       <div
         class="drop-zone"
         class:drag-over={dragOver}
-        role="button"
+        role="region"
+        aria-label="Drop audio files here or click to browse"
         tabindex="0"
         onclick={browseFiles}
         onkeydown={(e) => e.key === "Enter" && browseFiles()}
@@ -556,7 +597,7 @@
               <button class="btn-text btn-text-danger" onclick={clearAll}>Clear all</button>
             </div>
           </div>
-          <div class="file-items">
+          <div class="file-items" role="list" aria-label="Chapter list" onkeydown={handleFileListKeydown}>
             {#each files as file, i (file.path)}
               <div
                 class="file-item"
@@ -564,25 +605,30 @@
                 class:drop-target={dropTargetIndex === i && draggedIndex !== i}
                 draggable="true"
                 role="listitem"
+                tabindex={i === focusedFileIndex ? 0 : -1}
+                data-index={i}
+                aria-label="Chapter {i + 1}: {file.chapter_name}"
                 ondragstart={() => dragStart(i)}
                 ondragover={(e) => dragOverItem(e, i)}
                 ondragend={dragEnd}
+                onfocus={() => focusedFileIndex = i}
                 in:fade={{ duration: 150 }}
                 out:fade={{ duration: 100 }}
               >
-                <span class="drag-handle" title="Drag to reorder">⠿</span>
-                <span class="file-number">{i + 1}</span>
+                <span class="drag-handle" title="Drag to reorder" aria-hidden="true">⠿</span>
+                <span class="file-number" aria-hidden="true">{i + 1}</span>
                 <input
                   class="chapter-name"
                   type="text"
                   value={file.chapter_name}
                   oninput={(e) => updateChapterName(i, e.target.value)}
+                  aria-label="Chapter {i + 1} name"
                 />
-                <span class="codec-badge" class:codec-aac={file.codec === "aac"} class:codec-mp3={file.codec === "mp3"}>
+                <span class="codec-badge" class:codec-aac={file.codec === "aac"} class:codec-mp3={file.codec === "mp3"} aria-label="{file.codec.toUpperCase()} format">
                   {file.codec.toUpperCase()}
                 </span>
                 <span class="file-duration">{formatDuration(file.duration)}</span>
-                <button class="btn-remove" onclick={() => removeFile(i)} title="Remove">×</button>
+                <button class="btn-remove" onclick={() => removeFile(i)} title="Remove" aria-label="Remove chapter {i + 1}">×</button>
               </div>
             {/each}
           </div>
@@ -597,7 +643,7 @@
               {#if coverArt}
                 <img class="cover-art" src={coverArt} alt="Cover art" />
               {:else}
-                <div class="cover-placeholder">
+                <div class="cover-placeholder" aria-label="No cover art">
                   <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
                     <rect x="4" y="4" width="24" height="24" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
                     <circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
@@ -707,7 +753,7 @@
     --surface: #F2F0EC;
     --border: #E2DFD9;
     --text: #1A1918;
-    --text-secondary: #7A756E;
+    --text-secondary: #706B64;
     --accent: #C67B30;
     --accent-hover: #A86520;
     --success: #4A7C59;
@@ -724,7 +770,7 @@
       --surface: #242320;
       --border: #3A3835;
       --text: #EDECEA;
-      --text-secondary: #8A857E;
+      --text-secondary: #918C85;
       --accent: #D4893A;
       --accent-hover: #E09A4A;
       --success: #5A9A6A;
@@ -1678,4 +1724,92 @@
   :global(::-webkit-scrollbar-track) { background: transparent; }
   :global(::-webkit-scrollbar-thumb) { background: var(--border); border-radius: 3px; }
   :global(::-webkit-scrollbar-thumb:hover) { background: var(--text-secondary); }
+
+  /* ── Screen reader only ──────────────────────────────────────────── */
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ── Focus-visible ───────────────────────────────────────────────── */
+
+  .drop-zone:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .btn-drop-browse:focus-visible,
+  .btn-text:focus-visible,
+  .btn-browse:focus-visible,
+  .btn-convert:focus-visible,
+  .btn-cancel:focus-visible,
+  .btn-reveal-complete:focus-visible,
+  .btn-another:focus-visible,
+  .error-dismiss:focus-visible,
+  .btn-remove:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .btn-remove:focus-visible {
+    opacity: 1;
+  }
+
+  .file-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+
+  .chapter-name:focus-visible {
+    border-color: var(--accent);
+    background: var(--bg);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+
+  .metadata-fields input:focus-visible,
+  .dir-input input:focus-visible,
+  .filename-input input:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .encoding-fields select:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .checkbox-label input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ── Reduced motion ──────────────────────────────────────────────── */
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+
+    .converting-bar-fill {
+      animation: none;
+    }
+
+    .complete-icon .check-circle,
+    .complete-icon .check-path {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+  }
 </style>

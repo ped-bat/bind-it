@@ -1,6 +1,8 @@
 node_modules/
 target/
 dist/
+build/
+.svelte-kit/
 .DS_Store
 *.swp
 .env

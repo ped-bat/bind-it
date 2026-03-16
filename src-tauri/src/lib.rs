@@ -8,6 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::LazyLock;
 use tauri::Emitter;
 
 // ── Global state ─────────────────────────────────────────────────────────────
@@ -79,8 +80,8 @@ pub struct PreflightResult {
 }
 
 #[tauri::command]
-fn preflight_check(files: Vec<String>, output_dir: String) -> PreflightResult {
-    let warnings = Vec::new();
+fn preflight_check(files: Vec<String>, output_dir: String, output_filename: Option<String>) -> PreflightResult {
+    let mut warnings = Vec::new();
     let mut errors = Vec::new();
 
     // Check all input files still exist and are readable
@@ -136,6 +137,14 @@ fn preflight_check(files: Vec<String>, output_dir: String) -> PreflightResult {
         errors.push("ffprobe is required but not installed. Install it with: brew install ffmpeg".to_string());
     }
 
+    // Warn if output file already exists (it will get a numeric suffix)
+    if let Some(ref name) = output_filename {
+        let candidate = Path::new(&output_dir).join(format!("{}.m4b", name));
+        if candidate.exists() {
+            warnings.push(format!("{}.m4b already exists — a numbered suffix will be added.", name));
+        }
+    }
+
     PreflightResult {
         ok: errors.is_empty(),
         warnings,
@@ -146,6 +155,10 @@ fn preflight_check(files: Vec<String>, output_dir: String) -> PreflightResult {
 // ── Filename cleaner ────────────────────────────────────────────────────────
 
 pub fn clean_chapter_name(filename: &str) -> String {
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(?:(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*|\d{1,3}\s*[-–—.]\s*)").unwrap()
+    });
+
     // Strip extension
     let name = Path::new(filename)
         .file_stem()
@@ -153,8 +166,7 @@ pub fn clean_chapter_name(filename: &str) -> String {
         .unwrap_or(filename);
 
     // Strip common numbering prefixes: "01 - ", "01. ", "Chapter 1 - ", "Part 01 - ", etc.
-    let re = Regex::new(r"^(?:(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*|\d{1,3}\s*[-–—.]\s*)").unwrap();
-    let cleaned = re.replace(name, "").to_string();
+    let cleaned = RE.replace(name, "").to_string();
 
     let result = cleaned.trim().to_string();
     if result.is_empty() {
@@ -352,8 +364,19 @@ fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
         }
     }
 
-    // 2. Extract embedded art from first file to a persistent temp location
-    let tmp = std::env::temp_dir().join("bindery_cover.jpg");
+    // 2. Extract embedded art from first file to a unique temp location
+    let tmp = match tempfile::Builder::new()
+        .prefix("bindery_cover_")
+        .suffix(".jpg")
+        .tempfile()
+    {
+        Ok(f) => {
+            let (_, path) = f.keep().unwrap();
+            path
+        }
+        Err(_) => return None,
+    };
+
     let result = Command::new("ffmpeg")
         .args([
             "-y", "-i", &paths[0],
@@ -373,6 +396,8 @@ fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
             }
         }
     }
+    // Clean up if extraction failed
+    let _ = fs::remove_file(&tmp);
 
     None
 }
@@ -785,25 +810,42 @@ where
 
     } else {
         // ── Path 3: Mixed — parallel transcode non-AAC, then concat all ─────
+        // Detect the most common sample rate among ALL files for consistency
+        let mut sr_counts = HashMap::new();
+        for p in &probed {
+            *sr_counts.entry(p.sample_rate).or_insert(0u32) += 1;
+        }
+        let target_sr = sr_counts.into_iter().max_by_key(|&(_, count)| count).unwrap().0;
+
         emit("transcoding", 10.0, "Transcoding non-AAC files…");
 
-        let items: Vec<(usize, String)> = config.files.iter().enumerate()
+        // Transcode all non-AAC files to AAC at the target sample rate
+        let non_aac_items: Vec<(usize, String)> = config.files.iter().enumerate()
             .filter(|(i, _)| probed[*i].codec != "aac")
             .map(|(i, f)| (i, f.path.clone()))
             .collect();
 
+        // Also transcode AAC files whose sample rate doesn't match the target
+        let mismatched_aac_items: Vec<(usize, String)> = config.files.iter().enumerate()
+            .filter(|(i, _)| probed[*i].codec == "aac" && probed[*i].sample_rate != target_sr)
+            .map(|(i, f)| (i, f.path.clone()))
+            .collect();
+
+        let mut all_items = non_aac_items;
+        all_items.extend(mismatched_aac_items);
+
         let transcoded = transcode_parallel(
-            &items, tmp_dir.path(), &bitrate_arg, channels_arg,
-            None, &emit, 10.0, 50.0,
+            &all_items, tmp_dir.path(), &bitrate_arg, channels_arg,
+            Some(target_sr), &emit, 10.0, 50.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
             return Err("Cancelled by user".to_string());
         }
 
-        // Build ordered list: original AAC files + transcoded non-AAC
+        // Build ordered list: transcoded files where needed, original AAC where matching
         let mut transcode_map: HashMap<usize, PathBuf> =
-            items.iter().map(|(idx, _)| *idx).zip(transcoded).collect();
+            all_items.iter().map(|(idx, _)| *idx).zip(transcoded).collect();
 
         let mut all_paths: Vec<PathBuf> = Vec::new();
         for (i, file) in config.files.iter().enumerate() {

@@ -348,6 +348,7 @@
       const preflight = await invoke("preflight_check", {
         files: files.map(f => f.path),
         outputDir,
+        outputFilename,
       });
       if (!preflight.ok) {
         error = preflight.errors.join("\n");
@@ -456,7 +457,15 @@
   }
 
   function estimateFileSize(durationSec, bitrateKbps) {
-    const bytes = (bitrateKbps * 1000 / 8) * durationSec;
+    let effectiveBps;
+    if (mergePlan?.strategy === "remux") {
+      // Use actual average bitrate from source files (bitrate is in bps)
+      const totalBitrate = files.reduce((sum, f) => sum + (f.bitrate || 0), 0);
+      effectiveBps = files.length > 0 ? totalBitrate / files.length : bitrateKbps * 1000;
+    } else {
+      effectiveBps = bitrateKbps * 1000;
+    }
+    const bytes = (effectiveBps / 8) * durationSec;
     if (bytes >= 1073741824) return `~${(bytes / 1073741824).toFixed(1)} GB`;
     if (bytes >= 1048576) return `~${(bytes / 1048576).toFixed(0)} MB`;
     return `~${(bytes / 1024).toFixed(0)} KB`;
@@ -597,6 +606,7 @@
       <!-- Drop zone -->
       <div
         class="drop-zone"
+        in:fade={{ duration: 200, delay: 100 }}
         class:drag-over={dragOver}
         role="region"
         aria-label="Drop audio files here or click to browse"
@@ -786,7 +796,7 @@
             onclick={startConvert}
             disabled={files.length < 1 || !ffmpegOk}
           >
-            Bind audiobook
+            {needsTranscode ? "Bind audiobook (transcoding)" : "Bind audiobook"}
           </button>
           <p class="shortcut-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵</p>
         </div>
@@ -1132,7 +1142,7 @@
     font-size: 14px;
     cursor: grab;
     user-select: none;
-    opacity: 0.3;
+    opacity: 0.4;
     min-width: 28px;
     min-height: 32px;
     display: flex;
@@ -1143,6 +1153,7 @@
   }
 
   .file-item:hover .drag-handle { opacity: 0.7; }
+  .file-item:focus-within .drag-handle { opacity: 0.6; }
 
   .drag-handle:hover {
     opacity: 1 !important;
@@ -1169,6 +1180,10 @@
     border-radius: 4px;
     outline: none;
     min-width: 0;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
     transition: border-color var(--transition), background var(--transition);
   }
 
@@ -1177,6 +1192,8 @@
   .chapter-name:focus {
     border-color: var(--accent);
     background: var(--bg);
+    text-overflow: clip;
+    overflow: visible;
   }
 
   .codec-badge {

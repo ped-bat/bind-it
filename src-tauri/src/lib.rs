@@ -982,22 +982,32 @@ pub fn add_metadata_and_cover(
     fs::write(&metadata_file, &metadata_content)
         .map_err(|e| format!("Failed to write metadata: {}", e))?;
 
-    let mut args: Vec<String> = vec![
-        "-y".into(),
-        "-i".into(), input.into(),
-        "-i".into(), metadata_file.to_str().unwrap().into(),
-        "-map_metadata".into(), "1".into(),
-    ];
-
     // Handle cover art
     let has_cover = config.cover_art_path.as_ref().map_or(false, |p| {
         Path::new(p).exists()
     });
 
+    // Build args: all inputs first, then output options
+    let mut args: Vec<String> = vec![
+        "-y".into(),
+        "-i".into(), input.into(),
+        "-i".into(), metadata_file.to_str().unwrap().into(),
+    ];
+
     if has_cover {
         let cover = config.cover_art_path.as_ref().unwrap();
         args.extend_from_slice(&[
             "-i".into(), cover.clone(),
+        ]);
+    }
+
+    // Output options: map_metadata must come after all inputs
+    args.extend_from_slice(&[
+        "-map_metadata".into(), "1".into(),
+    ]);
+
+    if has_cover {
+        args.extend_from_slice(&[
             "-map".into(), "0:a".into(),
             "-map".into(), "2:v".into(),
             "-c:v".into(), "copy".into(),

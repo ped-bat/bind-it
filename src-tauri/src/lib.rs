@@ -34,6 +34,7 @@ pub struct AudioFileInfo {
     pub album: Option<String>,
     pub narrator: Option<String>,
     pub year: Option<String>,
+    pub file_size: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -313,6 +314,8 @@ pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
 
     let chapter_name = clean_chapter_name(&filename);
 
+    let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+
     Ok(AudioFileInfo {
         path: path.to_string(),
         filename,
@@ -329,6 +332,7 @@ pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
             .or_else(|| get_tag("composer"))
             .or_else(|| get_tag("album_artist")),
         year: get_tag("date").or_else(|| get_tag("year")),
+        file_size,
     })
 }
 
@@ -774,7 +778,7 @@ where
         )?;
 
     } else if all_aac {
-        // ── Path 1b: All AAC but mismatched sample rates — parallel normalize
+        // ── Path 1b: All AAC but mismatched sample rates — selective normalize
         let mut sr_counts = HashMap::new();
         for p in &probed {
             *sr_counts.entry(p.sample_rate).or_insert(0u32) += 1;
@@ -783,12 +787,14 @@ where
 
         emit("transcoding", 10.0, "Normalizing sample rates…");
 
-        let items: Vec<(usize, String)> = config.files.iter().enumerate()
+        // Only transcode files whose sample rate doesn't match the target
+        let mismatched_items: Vec<(usize, String)> = config.files.iter().enumerate()
+            .filter(|(i, _)| probed[*i].sample_rate != target_sr)
             .map(|(i, f)| (i, f.path.clone()))
             .collect();
 
-        let temp_aac_files = transcode_parallel(
-            &items, tmp_dir.path(), &bitrate_arg, channels_arg,
+        let transcoded = transcode_parallel(
+            &mismatched_items, tmp_dir.path(), &bitrate_arg, channels_arg,
             Some(target_sr), &emit, 10.0, 60.0,
         )?;
 
@@ -796,8 +802,21 @@ where
             return Err("Cancelled by user".to_string());
         }
 
+        // Build ordered list: transcoded where needed, originals where they match
+        let mut transcode_map: HashMap<usize, PathBuf> =
+            mismatched_items.iter().map(|(idx, _)| *idx).zip(transcoded).collect();
+
+        let mut all_paths: Vec<PathBuf> = Vec::new();
+        for (i, file) in config.files.iter().enumerate() {
+            if let Some(path) = transcode_map.remove(&i) {
+                all_paths.push(path);
+            } else {
+                all_paths.push(PathBuf::from(&file.path));
+            }
+        }
+
         emit("merging", 60.0, "Concatenating normalized files…");
-        let intermediate = concat_aac_files(&temp_aac_files, tmp_dir.path())?;
+        let intermediate = concat_aac_files(&all_paths, tmp_dir.path())?;
 
         emit("chapters", 80.0, "Adding chapter metadata…");
         add_metadata_and_cover(
@@ -930,7 +949,11 @@ fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<(), Str
                 if CANCEL_FLAG.load(Ordering::Relaxed) {
                     let _ = app.emit("merge-cancelled", ());
                 } else {
-                    let _ = app.emit("merge-complete", path);
+                    let size_bytes = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                    let _ = app.emit("merge-complete", serde_json::json!({
+                        "path": path,
+                        "size_bytes": size_bytes,
+                    }));
                 }
             }
             Err(e) => {

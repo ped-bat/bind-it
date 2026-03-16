@@ -59,7 +59,7 @@
     });
 
     unlistenComplete = await listen("merge-complete", (event) => {
-      const path = event.payload;
+      const { path, size_bytes } = event.payload;
       outputPath = path;
       stopTimer();
       completionData = {
@@ -67,6 +67,7 @@
         elapsed: elapsedSeconds,
         fileCount: files.length,
         totalDuration: totalDuration(),
+        sizeBytes: size_bytes,
       };
       appState = "complete";
       announce("Audiobook created successfully");
@@ -463,6 +464,13 @@
     return `~${(bytes / 1024).toFixed(0)} KB`;
   }
 
+  function formatFileSize(bytes) {
+    if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${bytes} B`;
+  }
+
   function announce(msg) {
     liveAnnouncement = "";
     requestAnimationFrame(() => { liveAnnouncement = msg; });
@@ -556,6 +564,10 @@
             <span>{formatDurationHuman(completionData.totalDuration)}</span>
             <span class="complete-stat-sep">&middot;</span>
             <span>{formatElapsed(completionData.elapsed)}</span>
+            {#if completionData.sizeBytes}
+              <span class="complete-stat-sep">&middot;</span>
+              <span>{formatFileSize(completionData.sizeBytes)}</span>
+            {/if}
           </div>
         {/if}
 
@@ -677,6 +689,7 @@
                   {file.codec.toUpperCase()}
                 </span>
                 <span class="file-duration">{formatDuration(file.duration)}</span>
+                <span class="file-size">{formatFileSize(file.file_size)}</span>
                 <button class="btn-remove" onclick={() => removeFile(i)} title="Remove" aria-label="Remove chapter {i + 1}">×</button>
               </div>
             {/each}
@@ -1226,6 +1239,15 @@
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
     width: 40px;
+    text-align: right;
+  }
+
+  .file-size {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    width: 56px;
     text-align: right;
   }
 

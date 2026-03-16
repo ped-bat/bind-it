@@ -377,6 +377,33 @@ fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
     None
 }
 
+#[tauri::command]
+fn set_custom_cover_art(path: String) -> Result<CoverArtResult, String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Err("File does not exist".to_string());
+    }
+
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    if !["jpg", "jpeg", "png"].contains(&ext.as_str()) {
+        return Err("Unsupported image format. Please select a JPG or PNG file.".to_string());
+    }
+
+    let data = fs::read(p).map_err(|e| format!("Failed to read image: {}", e))?;
+    let mime = if ext == "png" { "image/png" } else { "image/jpeg" };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+
+    Ok(CoverArtResult {
+        data_uri: format!("data:{};base64,{}", mime, b64),
+        file_path: path,
+    })
+}
+
 // ── Merge plan ──────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1041,6 +1068,7 @@ pub fn run() {
             preflight_check,
             probe_files,
             get_cover_art,
+            set_custom_cover_art,
             get_merge_plan,
             merge_audiobook,
             cancel_merge,

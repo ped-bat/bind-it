@@ -261,6 +261,22 @@
     if (selected) outputDir = selected;
   }
 
+  async function chooseCoverArt() {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png"] }],
+    });
+    if (selected) {
+      try {
+        const art = await invoke("set_custom_cover_art", { path: selected });
+        coverArt = art.data_uri;
+        coverArtPath = art.file_path;
+      } catch (e) {
+        error = String(e);
+      }
+    }
+  }
+
   function handleDrop(e) {
     e.preventDefault();
     dragOver = false;
@@ -667,17 +683,22 @@
           <section class="panel metadata-panel">
             <h2>Metadata</h2>
             <div class="metadata-content">
-              {#if coverArt}
-                <img class="cover-art" src={coverArt} alt="Cover art" />
-              {:else}
-                <div class="cover-placeholder" aria-label="No cover art">
-                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                    <rect x="4" y="4" width="24" height="24" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                    <circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                    <path d="M4 22l6-6 4 4 4-4 10 10" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                  </svg>
-                </div>
-              {/if}
+              <div class="cover-art-container">
+                {#if coverArt}
+                  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                  <img class="cover-art" src={coverArt} alt="Cover art — click to change" tabindex="0" role="button" aria-label="Change cover art" onclick={chooseCoverArt} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseCoverArt(); } }} />
+                  <button class="btn-remove-cover" onclick={(e) => { e.stopPropagation(); coverArt = null; coverArtPath = null; }} title="Remove cover art" aria-label="Remove cover art">×</button>
+                {:else}
+                  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                  <div class="cover-placeholder" tabindex="0" role="button" aria-label="Choose cover art" onclick={chooseCoverArt} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseCoverArt(); } }}>
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                      <rect x="4" y="4" width="24" height="24" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                      <circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                      <path d="M4 22l6-6 4 4 4-4 10 10" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                    </svg>
+                  </div>
+                {/if}
+              </div>
               <div class="metadata-fields">
                 <label>
                   <span>Title</span>
@@ -1214,6 +1235,42 @@
   .metadata-content {
     display: flex;
     gap: 16px;
+  }
+
+  .cover-art-container {
+    position: relative;
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+  }
+
+  .cover-art-container:hover .btn-remove-cover { opacity: 1; }
+
+  .btn-remove-cover {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity var(--transition), background var(--transition), color var(--transition);
+    z-index: 1;
+  }
+
+  .btn-remove-cover:hover {
+    color: var(--error);
+    background: color-mix(in srgb, var(--error) 12%, transparent);
+    border-color: var(--error);
   }
 
   .cover-art {
@@ -1806,8 +1863,20 @@
     outline-offset: 2px;
   }
 
-  .btn-remove:focus-visible {
+  .btn-remove:focus-visible,
+  .btn-remove-cover:focus-visible {
     opacity: 1;
+  }
+
+  .cover-art:focus-visible,
+  .cover-placeholder:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .btn-remove-cover:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   .file-item:focus-visible {

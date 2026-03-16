@@ -21,60 +21,61 @@
     </filter>
   </defs>
 
-  <!-- Squircle background -->
-  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- Apple HIG: ~10% padding on each side (26px inset on 256px canvas) -->
+  <g transform="translate(26, 26) scale(0.797)">
+    <!-- Squircle background -->
+    <rect width="256" height="256" rx="56" fill="url(#bg)"/>
 
-  <!-- Subtle white highlight on top portion -->
-  <rect width="256" height="140" rx="56" fill="white" opacity="0.06"/>
+    <!-- Subtle white highlight on top portion -->
+    <rect width="256" height="140" rx="56" fill="white" opacity="0.06"/>
 
-  <!-- Book pages with drop shadow -->
-  <!-- Left page: concave top edge curving inward to spine, gentle convex bulge at bottom -->
-  <path d="M50 80
-           C50 74, 54 70, 60 70
-           L100 68
-           Q118 66, 128 72
-           L128 204
-           Q106 198, 82 200
-           L60 202
-           C54 202, 50 198, 50 192
-           Q49 160, 50 80 Z"
-        fill="url(#leftPage)" filter="url(#pageShadow)"/>
+    <!-- Book pages with drop shadow -->
+    <path d="M50 80
+             C50 74, 54 70, 60 70
+             L100 68
+             Q118 66, 128 72
+             L128 204
+             Q106 198, 82 200
+             L60 202
+             C54 202, 50 198, 50 192
+             Q49 160, 50 80 Z"
+          fill="url(#leftPage)" filter="url(#pageShadow)"/>
 
-  <!-- Right page: mirror of left -->
-  <path d="M206 80
-           C206 74, 202 70, 196 70
-           L156 68
-           Q138 66, 128 72
-           L128 204
-           Q150 198, 174 200
-           L196 202
-           C202 202, 206 198, 206 192
-           Q207 160, 206 80 Z"
-        fill="url(#rightPage)" filter="url(#pageShadow)"/>
+    <path d="M206 80
+             C206 74, 202 70, 196 70
+             L156 68
+             Q138 66, 128 72
+             L128 204
+             Q150 198, 174 200
+             L196 202
+             C202 202, 206 198, 206 192
+             Q207 160, 206 80 Z"
+          fill="url(#rightPage)" filter="url(#pageShadow)"/>
 
-  <!-- Clip path for book area -->
-  <clipPath id="bookClip">
-    <path d="M50 70 L100 68 Q118 66, 128 72 Q138 66, 156 68 L206 70
-             L207 192 Q207 202, 196 202 L174 200 Q150 198, 128 204 Q106 198, 82 200 L60 202 Q50 202, 50 192 Z"/>
-  </clipPath>
+    <!-- Clip path for book area -->
+    <clipPath id="bookClip">
+      <path d="M50 70 L100 68 Q118 66, 128 72 Q138 66, 156 68 L206 70
+               L207 192 Q207 202, 196 202 L174 200 Q150 198, 128 204 Q106 198, 82 200 L60 202 Q50 202, 50 192 Z"/>
+    </clipPath>
 
-  <!-- Terrain waveform on book face — organic audio mountain range -->
-  <path d="M50 170
-           C56 168, 60 162, 66 155
-           C72 145, 76 138, 82 130
-           C86 124, 88 128, 92 134
-           C96 140, 98 144, 102 138
-           C106 130, 110 118, 116 108
-           C120 100, 124 94, 128 88
-           C132 94, 136 100, 140 108
-           C146 118, 150 130, 154 138
-           C158 144, 160 140, 164 134
-           C168 128, 170 124, 174 130
-           C180 138, 184 145, 190 155
-           C196 162, 200 168, 206 170
-           L206 210 L50 210 Z"
-        fill="url(#waveGrad)" clip-path="url(#bookClip)"/>
+    <!-- Terrain waveform -->
+    <path d="M50 170
+             C56 168, 60 162, 66 155
+             C72 145, 76 138, 82 130
+             C86 124, 88 128, 92 134
+             C96 140, 98 144, 102 138
+             C106 130, 110 118, 116 108
+             C120 100, 124 94, 128 88
+             C132 94, 136 100, 140 108
+             C146 118, 150 130, 154 138
+             C158 144, 160 140, 164 134
+             C168 128, 170 124, 174 130
+             C180 138, 184 145, 190 155
+             C196 162, 200 168, 206 170
+             L206 210 L50 210 Z"
+          fill="url(#waveGrad)" clip-path="url(#bookClip)"/>
 
-  <!-- Spine line at centre -->
-  <line x1="128" y1="72" x2="128" y2="204" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+    <!-- Spine line -->
+    <line x1="128" y1="72" x2="128" y2="204" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+  </g>
 </svg>

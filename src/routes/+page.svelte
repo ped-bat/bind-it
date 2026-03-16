@@ -171,6 +171,18 @@
     }
   }
 
+  // ── Dialog helpers ───────────────────────────────────────────────────────
+
+  /** Extract string path from a dialog result (may be string or {path:string} object) */
+  function toPath(item) {
+    return typeof item === "object" && item !== null && "path" in item ? item.path : item;
+  }
+
+  function toPaths(selected) {
+    const items = Array.isArray(selected) ? selected : [selected];
+    return items.map(toPath);
+  }
+
   // ── File handling ─────────────────────────────────────────────────────────
 
   async function addFiles(paths, folderName = null) {
@@ -236,17 +248,15 @@
       filters: [{ name: "Audio", extensions: ["mp3", "m4a", "m4b", "aac"] }],
     });
     if (selected) {
-      const paths = Array.isArray(selected) ? selected : [selected];
-      await addFiles(paths);
+      await addFiles(toPaths(selected));
     }
   }
 
   async function browseFolders() {
     const selected = await open({ directory: true, multiple: true });
     if (selected) {
-      const paths = Array.isArray(selected) ? selected : [selected];
       try {
-        const result = await invoke("resolve_audio_paths", { paths });
+        const result = await invoke("resolve_audio_paths", { paths: toPaths(selected) });
         if (result.paths.length > 0) {
           await addFiles(result.paths, result.folder_name);
         }
@@ -258,7 +268,7 @@
 
   async function browseOutputDir() {
     const selected = await open({ directory: true });
-    if (selected) outputDir = selected;
+    if (selected) outputDir = toPath(selected);
   }
 
   async function chooseCoverArt() {
@@ -268,7 +278,7 @@
     });
     if (selected) {
       try {
-        const art = await invoke("set_custom_cover_art", { path: selected });
+        const art = await invoke("set_custom_cover_art", { path: toPath(selected) });
         coverArt = art.data_uri;
         coverArtPath = art.file_path;
       } catch (e) {
@@ -572,14 +582,14 @@
 
   {:else}
     <!-- ── Setup screen ──────────────────────────────────────────────── -->
-    <header>
-      <h1>Bindery</h1>
-      {#if files.length > 0}
+    {#if files.length > 0}
+      <header>
+        <h1>Bindery</h1>
         <span class="file-count">
           {files.length} file{files.length !== 1 ? "s" : ""} · {formatDurationHuman(totalDuration())} · {estimateFileSize(totalDuration(), bitrate)}
         </span>
-      {/if}
-    </header>
+      </header>
+    {/if}
 
     {#if error}
       <div class="error-banner" transition:slide>
@@ -617,6 +627,7 @@
         ondragleave={() => dragOver = false}
         ondrop={handleDrop}
       >
+        <h1 class="drop-zone-title">Bindery</h1>
         <div class="drop-icon">
           <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
             <!-- Book spine -->
@@ -627,11 +638,10 @@
             <path d="M27 22v12M31 18v20M35 24v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </div>
-        <p class="drop-title">Drop audio files or folders here</p>
+        <p class="drop-title">Drop files or folders here</p>
         <p class="drop-subtitle">MP3, M4A, M4B, AAC</p>
         <div class="drop-buttons">
-          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse files</button>
-          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFolders(); }}>Browse folders</button>
+          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse</button>
         </div>
         <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O to open files</p>
       </div>
@@ -646,7 +656,6 @@
                 <span class="spinner-inline"></span>
               {/if}
               <button class="btn-text" onclick={browseFiles}>+ Add files</button>
-              <button class="btn-text" onclick={browseFolders}>+ Add folder</button>
               <button class="btn-text btn-text-danger" onclick={clearAll}>Clear all</button>
             </div>
           </div>
@@ -959,6 +968,15 @@
 
   .drop-zone.probing-state {
     cursor: default;
+  }
+
+  .drop-zone-title {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 30px;
+    font-weight: 400;
+    margin: 0 0 4px 0;
+    letter-spacing: -0.02em;
+    color: var(--text);
   }
 
   .drop-zone:hover .drop-icon, .drop-zone.drag-over .drop-icon {
@@ -1648,12 +1666,31 @@
     background: var(--accent);
     border-radius: 4px;
     transition: width 0.5s ease-out;
-    animation: barPulse 2s ease-in-out infinite;
+    position: relative;
+    overflow: hidden;
   }
 
-  @keyframes barPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.75; }
+  .converting-bar-fill::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.18) 40%,
+      rgba(255, 255, 255, 0.18) 60%,
+      transparent 100%
+    );
+    width: 60%;
+    animation: barSweep 1.8s ease-in-out infinite;
+  }
+
+  @keyframes barSweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(260%); }
   }
 
   .converting-message {
@@ -1714,7 +1751,14 @@
   }
 
   .complete-icon {
-    animation: fadeIn 300ms ease-out;
+    animation: springScale 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  @keyframes springScale {
+    0% { transform: scale(0.3); opacity: 0; }
+    60% { transform: scale(1.15); opacity: 1; }
+    80% { transform: scale(0.95); }
+    100% { transform: scale(1); opacity: 1; }
   }
 
   .complete-icon .check-circle {
@@ -1934,8 +1978,13 @@
       transition-duration: 0.01ms !important;
     }
 
-    .converting-bar-fill {
+    .converting-bar-fill::after {
       animation: none;
+    }
+
+    .complete-icon {
+      animation: none;
+      transform: scale(1);
     }
 
     .complete-icon .check-circle,

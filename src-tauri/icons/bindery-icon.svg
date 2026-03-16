@@ -21,27 +21,30 @@
     </filter>
   </defs>
 
-  <!-- Squircle background -->
-  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- Apple HIG: ~10% padding on each side (26px inset on 256px canvas) -->
+  <g transform="translate(26, 26) scale(0.797)">
+    <!-- Squircle background -->
+    <rect width="256" height="256" rx="56" fill="url(#bg)"/>
 
-  <!-- Subtle white highlight at top -->
-  <rect width="256" height="128" rx="56" fill="white" opacity="0.06"/>
+    <!-- Subtle white highlight at top -->
+    <rect width="256" height="128" rx="56" fill="white" opacity="0.06"/>
 
-  <!-- Left page -->
-  <path d="M36 72 C36 68 40 64 44 64 C72 64 100 62 128 66 L128 216 C100 212 72 214 44 214 C40 214 36 210 36 206 Z"
-        fill="url(#leftPage)" filter="url(#pageShadow)"/>
+    <!-- Left page -->
+    <path d="M36 72 C36 68 40 64 44 64 C72 64 100 62 128 66 L128 216 C100 212 72 214 44 214 C40 214 36 210 36 206 Z"
+          fill="url(#leftPage)" filter="url(#pageShadow)"/>
 
-  <!-- Right page -->
-  <path d="M220 72 C220 68 216 64 212 64 C184 64 156 62 128 66 L128 216 C156 212 184 214 212 214 C216 214 220 210 220 206 Z"
-        fill="url(#rightPage)" filter="url(#pageShadow)"/>
+    <!-- Right page -->
+    <path d="M220 72 C220 68 216 64 212 64 C184 64 156 62 128 66 L128 216 C156 212 184 214 212 214 C216 214 220 210 220 206 Z"
+          fill="url(#rightPage)" filter="url(#pageShadow)"/>
 
-  <!-- Terrain waveform overlaid on book pages -->
-  <clipPath id="bookClip">
-    <path d="M36 64 C72 64 100 62 128 66 C156 62 184 64 220 64 L220 216 C184 214 156 212 128 216 C100 212 72 214 36 214 Z"/>
-  </clipPath>
-  <path d="M46 160 C52 160 58 154 64 146 C70 138 74 126 80 118 C86 110 90 116 96 124 C102 132 106 144 112 136 C118 128 122 112 128 104 C134 112 138 128 144 136 C150 144 154 132 160 124 C166 116 170 110 176 118 C182 126 186 138 192 146 C198 154 204 160 210 160 L210 216 L46 216 Z"
-        fill="url(#waveGrad)" clip-path="url(#bookClip)"/>
+    <!-- Terrain waveform overlaid on book pages -->
+    <clipPath id="bookClip">
+      <path d="M36 64 C72 64 100 62 128 66 C156 62 184 64 220 64 L220 216 C184 214 156 212 128 216 C100 212 72 214 36 214 Z"/>
+    </clipPath>
+    <path d="M46 160 C52 160 58 154 64 146 C70 138 74 126 80 118 C86 110 90 116 96 124 C102 132 106 144 112 136 C118 128 122 112 128 104 C134 112 138 128 144 136 C150 144 154 132 160 124 C166 116 170 110 176 118 C182 126 186 138 192 146 C198 154 204 160 210 160 L210 216 L46 216 Z"
+          fill="url(#waveGrad)" clip-path="url(#bookClip)"/>
 
-  <!-- Spine -->
-  <line x1="128" y1="66" x2="128" y2="216" stroke="#00000022" stroke-width="1.5"/>
+    <!-- Spine -->
+    <line x1="128" y1="66" x2="128" y2="216" stroke="#00000022" stroke-width="1.5"/>
+  </g>
 </svg>

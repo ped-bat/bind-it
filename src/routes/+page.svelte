@@ -7,6 +7,8 @@
 
   // ── State ─────────────────────────────────────────────────────────────────
 
+  let appState = $state("setup"); // "setup" | "converting" | "complete"
+
   let files = $state([]);
   let coverArt = $state(null);
   let metadata = $state({ title: "", artist: "", album: "", narrator: "", year: "" });
@@ -15,7 +17,6 @@
   let bitrate = $state(64);
   let mono = $state(true);
   let mergePlan = $state(null);
-  let converting = $state(false);
   let progress = $state({ stage: "", percent: 0, message: "" });
   let outputPath = $state(null);
   let error = $state(null);
@@ -25,9 +26,19 @@
   let dropTargetIndex = $state(null);
   let probing = $state(false);
 
+  // Conversion timing
+  let elapsedSeconds = $state(0);
+  let elapsedTimer = null;
+
+  // Completion data
+  let completionData = $state(null);
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   let unlistenProgress;
+  let unlistenComplete;
+  let unlistenError;
+  let unlistenCancelled;
   let unlistenDrop;
   let unlistenDragOver;
   let unlistenDragLeave;
@@ -45,13 +56,45 @@
       progress = event.payload;
     });
 
+    unlistenComplete = await listen("merge-complete", (event) => {
+      const path = event.payload;
+      outputPath = path;
+      stopTimer();
+      completionData = {
+        filename: path.split("/").pop(),
+        elapsed: elapsedSeconds,
+        fileCount: files.length,
+        totalDuration: totalDuration(),
+      };
+      appState = "complete";
+    });
+
+    unlistenError = await listen("merge-error", (event) => {
+      stopTimer();
+      error = String(event.payload);
+      appState = "setup";
+    });
+
+    unlistenCancelled = await listen("merge-cancelled", () => {
+      stopTimer();
+      error = "Conversion cancelled";
+      appState = "setup";
+    });
+
     // Tauri file drop events (OS file drag-and-drop)
     unlistenDrop = await listen("tauri://drag-drop", async (event) => {
       dragOver = false;
+      if (appState !== "setup") return;
       const paths = event.payload.paths || [];
-      const audioPaths = paths.filter(p => /\.(mp3|m4a|m4b|aac)$/i.test(p));
-      if (audioPaths.length > 0) {
-        await addFiles(audioPaths);
+      if (paths.length > 0) {
+        try {
+          const resolved = await invoke("resolve_audio_paths", { paths });
+          if (resolved.length > 0) {
+            await addFiles(resolved);
+          }
+        } catch (e) {
+          error = String(e);
+        }
       }
     });
 
@@ -69,33 +112,57 @@
 
   onDestroy(() => {
     if (unlistenProgress) unlistenProgress();
+    if (unlistenComplete) unlistenComplete();
+    if (unlistenError) unlistenError();
+    if (unlistenCancelled) unlistenCancelled();
     if (unlistenDrop) unlistenDrop();
     if (unlistenDragOver) unlistenDragOver();
     if (unlistenDragLeave) unlistenDragLeave();
     window.removeEventListener("keydown", handleKeydown);
+    stopTimer();
   });
 
   function handleKeydown(e) {
     // Cmd+O / Ctrl+O — add files
-    if ((e.metaKey || e.ctrlKey) && e.key === "o") {
+    if ((e.metaKey || e.ctrlKey) && e.key === "o" && appState === "setup") {
       e.preventDefault();
       browseFiles();
     }
     // Cmd+Backspace / Ctrl+Backspace — clear all files
-    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace") {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Backspace" && appState === "setup") {
       e.preventDefault();
       clearAll();
     }
     // Cmd+Enter / Ctrl+Enter — start conversion
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && appState === "setup") {
       e.preventDefault();
-      if (files.length >= 1 && !converting && ffmpegOk) {
+      if (files.length >= 1 && ffmpegOk) {
         startConvert();
       }
     }
-    // Escape — dismiss errors
-    if (e.key === "Escape" && error) {
-      error = null;
+    // Escape — dismiss errors or cancel conversion
+    if (e.key === "Escape") {
+      if (appState === "converting") {
+        cancelConvert();
+      } else if (error) {
+        error = null;
+      }
+    }
+  }
+
+  // ── Timer ───────────────────────────────────────────────────────────────
+
+  function startTimer() {
+    elapsedSeconds = 0;
+    elapsedTimer = setInterval(() => {
+      elapsedSeconds += 1;
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
     }
   }
 
@@ -156,6 +223,21 @@
     if (selected) {
       const paths = Array.isArray(selected) ? selected : [selected];
       await addFiles(paths);
+    }
+  }
+
+  async function browseFolders() {
+    const selected = await open({ directory: true, multiple: true });
+    if (selected) {
+      const paths = Array.isArray(selected) ? selected : [selected];
+      try {
+        const resolved = await invoke("resolve_audio_paths", { paths });
+        if (resolved.length > 0) {
+          await addFiles(resolved);
+        }
+      } catch (e) {
+        error = String(e);
+      }
     }
   }
 
@@ -227,30 +309,41 @@
   async function startConvert() {
     if (files.length < 1 || !outputDir || !outputFilename) return;
     error = null;
-    converting = true;
     outputPath = null;
     progress = { stage: "preparing", percent: 0, message: "Starting\u2026" };
 
+    appState = "converting";
+    startTimer();
+
+    const config = {
+      files: files.map(f => ({ path: f.path, chapter_name: f.chapter_name })),
+      output_dir: outputDir,
+      output_filename: outputFilename,
+      title: metadata.title || null,
+      artist: metadata.artist || null,
+      album: metadata.album || null,
+      narrator: metadata.narrator || null,
+      year: metadata.year || null,
+      cover_art_path: null,
+      bitrate,
+      mono,
+    };
+
     try {
-      const config = {
-        files: files.map(f => ({ path: f.path, chapter_name: f.chapter_name })),
-        output_dir: outputDir,
-        output_filename: outputFilename,
-        title: metadata.title || null,
-        artist: metadata.artist || null,
-        album: metadata.album || null,
-        narrator: metadata.narrator || null,
-        year: metadata.year || null,
-        cover_art_path: null,
-        bitrate,
-        mono,
-      };
-      const result = await invoke("merge_audiobook", { config });
-      outputPath = result;
+      await invoke("merge_audiobook", { config });
     } catch (e) {
+      // If invoke itself fails (not the async operation), handle immediately
+      stopTimer();
       error = String(e);
-    } finally {
-      converting = false;
+      appState = "setup";
+    }
+  }
+
+  async function cancelConvert() {
+    try {
+      await invoke("cancel_merge");
+    } catch {
+      // ignore
     }
   }
 
@@ -263,6 +356,21 @@
         // fallback: ignore
       }
     }
+  }
+
+  function convertAnother() {
+    files = [];
+    coverArt = null;
+    metadata = { title: "", artist: "", album: "", narrator: "", year: "" };
+    outputFilename = "audiobook";
+    outputDir = "";
+    mergePlan = null;
+    outputPath = null;
+    error = null;
+    completionData = null;
+    progress = { stage: "", percent: 0, message: "" };
+    elapsedSeconds = 0;
+    appState = "setup";
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -278,6 +386,15 @@
     const m = Math.floor((seconds % 3600) / 60);
     if (h > 0) return `${h}h ${m}m`;
     return `${m}m`;
+  }
+
+  function formatElapsed(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
   }
 
   function totalDuration() {
@@ -300,213 +417,264 @@
 </script>
 
 <main>
-  <header>
-    <h1>Bindery</h1>
-    {#if files.length > 0}
-      <span class="file-count">
-        {files.length} file{files.length !== 1 ? "s" : ""} · {formatDurationHuman(totalDuration())} · {estimateFileSize(totalDuration(), bitrate)}
-      </span>
-    {/if}
-  </header>
+  {#if appState === "converting"}
+    <!-- ── Converting screen ─────────────────────────────────────────── -->
+    <div class="converting-screen" in:fade={{ duration: 200 }}>
+      <header class="converting-header">
+        <h1>Bindery</h1>
+      </header>
 
-  {#if error}
-    <div class="error-banner" transition:slide>
-      <span>{error}</span>
-      <button class="error-dismiss" onclick={() => error = null} title="Dismiss (Esc)">×</button>
-    </div>
-  {/if}
+      <div class="converting-content">
+        <div class="converting-progress">
+          <p class="converting-percent">{Math.round(progress.percent)}%</p>
+          <div class="converting-bar-track">
+            <div class="converting-bar-fill" style="width: {progress.percent}%"></div>
+          </div>
+          <p class="converting-message">{progress.message}</p>
+          <p class="converting-elapsed">{formatElapsed(elapsedSeconds)}</p>
+        </div>
 
-  {#if probing && files.length === 0}
-    <!-- Loading state while probing -->
-    <div class="drop-zone probing-state">
-      <div class="spinner"></div>
-      <p class="drop-title">Reading files…</p>
-      <p class="drop-subtitle">Probing audio metadata</p>
-    </div>
-  {:else if files.length === 0}
-    <!-- Drop zone -->
-    <div
-      class="drop-zone"
-      class:drag-over={dragOver}
-      role="button"
-      tabindex="0"
-      onclick={browseFiles}
-      onkeydown={(e) => e.key === "Enter" && browseFiles()}
-      ondragover={(e) => { e.preventDefault(); dragOver = true; }}
-      ondragleave={() => dragOver = false}
-      ondrop={handleDrop}
-    >
-      <div class="drop-icon">
-        <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-          <!-- Book spine -->
-          <path d="M14 8c0-1.1.9-2 2-2h4v44h-4a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-          <!-- Book cover -->
-          <path d="M20 6h20c1.1 0 2 .9 2 2v40c0 1.1-.9 2-2 2H20V6z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-          <!-- Audio wave lines -->
-          <path d="M27 22v12M31 18v20M35 24v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
+        <button class="btn-cancel" onclick={cancelConvert}>Cancel</button>
       </div>
-      <p class="drop-title">Drop audio files here or click to browse</p>
-      <p class="drop-subtitle">MP3, M4A, M4B, AAC</p>
-      <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O to open files</p>
     </div>
+
+  {:else if appState === "complete"}
+    <!-- ── Complete screen ───────────────────────────────────────────── -->
+    <div class="complete-screen" in:fade={{ duration: 200 }}>
+      <header class="complete-header">
+        <h1>Bindery</h1>
+      </header>
+
+      <div class="complete-content">
+        <div class="complete-icon">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="22" stroke="var(--success)" stroke-width="2" fill="color-mix(in srgb, var(--success) 10%, transparent)"/>
+            <path d="M15 24l6 6 12-12" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </div>
+
+        <h2 class="complete-title">Audiobook created</h2>
+
+        {#if completionData}
+          <p class="complete-filename">{completionData.filename}</p>
+          <div class="complete-stats">
+            <span>{completionData.fileCount} file{completionData.fileCount !== 1 ? "s" : ""}</span>
+            <span class="complete-stat-sep">&middot;</span>
+            <span>{formatDurationHuman(completionData.totalDuration)}</span>
+            <span class="complete-stat-sep">&middot;</span>
+            <span>{formatElapsed(completionData.elapsed)}</span>
+          </div>
+        {/if}
+
+        <div class="complete-actions">
+          <button class="btn-reveal-complete" onclick={revealInFinder}>Open folder</button>
+          <button class="btn-another" onclick={convertAnother}>Convert another</button>
+        </div>
+      </div>
+    </div>
+
   {:else}
-    <div class="content">
-      <!-- File list -->
-      <section class="panel file-list">
-        <div class="panel-header">
-          <h2>Chapters</h2>
-          <div class="panel-actions">
-            {#if probing}
-              <span class="spinner-inline"></span>
-            {/if}
-            <button class="btn-text" onclick={browseFiles}>+ Add files</button>
-            <button class="btn-text btn-text-danger" onclick={clearAll}>Clear all</button>
-          </div>
-        </div>
-        <div class="file-items">
-          {#each files as file, i (file.path)}
-            <div
-              class="file-item"
-              class:dragging={draggedIndex === i}
-              class:drop-target={dropTargetIndex === i && draggedIndex !== i}
-              draggable="true"
-              role="listitem"
-              ondragstart={() => dragStart(i)}
-              ondragover={(e) => dragOverItem(e, i)}
-              ondragend={dragEnd}
-              in:fade={{ duration: 150 }}
-              out:fade={{ duration: 100 }}
-            >
-              <span class="drag-handle" title="Drag to reorder">⠿</span>
-              <span class="file-number">{i + 1}</span>
-              <input
-                class="chapter-name"
-                type="text"
-                value={file.chapter_name}
-                oninput={(e) => updateChapterName(i, e.target.value)}
-              />
-              <span class="codec-badge" class:codec-aac={file.codec === "aac"} class:codec-mp3={file.codec === "mp3"}>
-                {file.codec.toUpperCase()}
-              </span>
-              <span class="file-duration">{formatDuration(file.duration)}</span>
-              <button class="btn-remove" onclick={() => removeFile(i)} title="Remove">×</button>
-            </div>
-          {/each}
-        </div>
-      </section>
-
-      <!-- Metadata + Settings two-column layout -->
-      <div class="two-col">
-        <!-- Metadata panel -->
-        <section class="panel metadata-panel">
-          <h2>Metadata</h2>
-          <div class="metadata-content">
-            {#if coverArt}
-              <img class="cover-art" src={coverArt} alt="Cover art" />
-            {:else}
-              <div class="cover-placeholder">
-                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                  <rect x="4" y="4" width="24" height="24" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                  <circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                  <path d="M4 22l6-6 4 4 4-4 10 10" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                </svg>
-              </div>
-            {/if}
-            <div class="metadata-fields">
-              <label>
-                <span>Title</span>
-                <input type="text" bind:value={metadata.title} placeholder="Audiobook title" />
-              </label>
-              <label>
-                <span>Author</span>
-                <input type="text" bind:value={metadata.artist} placeholder="Author name" />
-              </label>
-              <label>
-                <span>Album</span>
-                <input type="text" bind:value={metadata.album} placeholder="Album / Series" />
-              </label>
-              <label>
-                <span>Narrator</span>
-                <input type="text" bind:value={metadata.narrator} placeholder="Narrator name" />
-              </label>
-              <label>
-                <span>Year</span>
-                <input type="text" bind:value={metadata.year} placeholder="Year" />
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <!-- Output settings -->
-        <section class="panel output-panel">
-          <h2>Output</h2>
-          <div class="output-fields">
-            <label class="output-dir">
-              <span>Folder</span>
-              <div class="dir-input">
-                <input type="text" bind:value={outputDir} placeholder="Output folder" />
-                <button class="btn-browse" onclick={browseOutputDir}>Browse</button>
-              </div>
-            </label>
-            <label>
-              <span>Filename</span>
-              <div class="filename-input">
-                <input type="text" bind:value={outputFilename} placeholder="output" />
-                <span class="ext">.m4b</span>
-              </div>
-            </label>
-          </div>
-        </section>
-      </div>
-
-      <!-- Encoding settings (shown when transcoding needed) -->
-      {#if needsTranscode}
-        <section class="panel encoding-panel">
-          <h2>Encoding</h2>
-          <p class="transcode-notice">{strategyLabel}</p>
-          {#if mergePlan.strategy !== "remux"}
-            <div class="encoding-fields">
-              <label>
-                <span>Bitrate</span>
-                <select bind:value={bitrate}>
-                  <option value={64}>64 kbps</option>
-                  <option value={96}>96 kbps</option>
-                  <option value={128}>128 kbps</option>
-                  <option value={192}>192 kbps</option>
-                  <option value={256}>256 kbps</option>
-                  <option value={320}>320 kbps</option>
-                </select>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" bind:checked={mono} />
-                <span>Mono (recommended for spoken word)</span>
-              </label>
-            </div>
-            <div class="transcode-files">
-              <span class="transcode-label">Files to transcode:</span>
-              {#each mergePlan.needs_transcode as path}
-                <span class="transcode-file">{path.split("/").pop()}</span>
-              {/each}
-            </div>
-          {/if}
-        </section>
+    <!-- ── Setup screen ──────────────────────────────────────────────── -->
+    <header>
+      <h1>Bindery</h1>
+      {#if files.length > 0}
+        <span class="file-count">
+          {files.length} file{files.length !== 1 ? "s" : ""} · {formatDurationHuman(totalDuration())} · {estimateFileSize(totalDuration(), bitrate)}
+        </span>
       {/if}
+    </header>
 
-      <!-- Convert button / progress -->
-      <div class="convert-section">
-        {#if converting}
-          <div class="progress-container">
-            <div class="progress-bar" style="width: {progress.percent}%"></div>
-            <span class="progress-label">{Math.round(progress.percent)}%</span>
+    {#if error}
+      <div class="error-banner" transition:slide>
+        <span>{error}</span>
+        <button class="error-dismiss" onclick={() => error = null} title="Dismiss (Esc)">×</button>
+      </div>
+    {/if}
+
+    {#if probing && files.length === 0}
+      <!-- Loading state while probing -->
+      <div class="drop-zone probing-state">
+        <div class="spinner"></div>
+        <p class="drop-title">Reading files…</p>
+        <p class="drop-subtitle">Probing audio metadata</p>
+      </div>
+    {:else if files.length === 0}
+      <!-- Drop zone -->
+      <div
+        class="drop-zone"
+        class:drag-over={dragOver}
+        role="button"
+        tabindex="0"
+        onclick={browseFiles}
+        onkeydown={(e) => e.key === "Enter" && browseFiles()}
+        ondragover={(e) => { e.preventDefault(); dragOver = true; }}
+        ondragleave={() => dragOver = false}
+        ondrop={handleDrop}
+      >
+        <div class="drop-icon">
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+            <!-- Book spine -->
+            <path d="M14 8c0-1.1.9-2 2-2h4v44h-4a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <!-- Book cover -->
+            <path d="M20 6h20c1.1 0 2 .9 2 2v40c0 1.1-.9 2-2 2H20V6z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <!-- Audio wave lines -->
+            <path d="M27 22v12M31 18v20M35 24v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <p class="drop-title">Drop audio files or folders here</p>
+        <p class="drop-subtitle">MP3, M4A, M4B, AAC</p>
+        <div class="drop-buttons">
+          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse files</button>
+          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFolders(); }}>Browse folders</button>
+        </div>
+        <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O to open files</p>
+      </div>
+    {:else}
+      <div class="content">
+        <!-- File list -->
+        <section class="panel file-list">
+          <div class="panel-header">
+            <h2>Chapters</h2>
+            <div class="panel-actions">
+              {#if probing}
+                <span class="spinner-inline"></span>
+              {/if}
+              <button class="btn-text" onclick={browseFiles}>+ Add files</button>
+              <button class="btn-text" onclick={browseFolders}>+ Add folder</button>
+              <button class="btn-text btn-text-danger" onclick={clearAll}>Clear all</button>
+            </div>
           </div>
-          <p class="progress-message">{progress.message}</p>
-        {:else if outputPath}
-          <button class="btn-reveal" onclick={revealInFinder}>
-            Reveal in Finder
-          </button>
-          <p class="success-message">Created: {outputPath.split("/").pop()}</p>
-        {:else}
+          <div class="file-items">
+            {#each files as file, i (file.path)}
+              <div
+                class="file-item"
+                class:dragging={draggedIndex === i}
+                class:drop-target={dropTargetIndex === i && draggedIndex !== i}
+                draggable="true"
+                role="listitem"
+                ondragstart={() => dragStart(i)}
+                ondragover={(e) => dragOverItem(e, i)}
+                ondragend={dragEnd}
+                in:fade={{ duration: 150 }}
+                out:fade={{ duration: 100 }}
+              >
+                <span class="drag-handle" title="Drag to reorder">⠿</span>
+                <span class="file-number">{i + 1}</span>
+                <input
+                  class="chapter-name"
+                  type="text"
+                  value={file.chapter_name}
+                  oninput={(e) => updateChapterName(i, e.target.value)}
+                />
+                <span class="codec-badge" class:codec-aac={file.codec === "aac"} class:codec-mp3={file.codec === "mp3"}>
+                  {file.codec.toUpperCase()}
+                </span>
+                <span class="file-duration">{formatDuration(file.duration)}</span>
+                <button class="btn-remove" onclick={() => removeFile(i)} title="Remove">×</button>
+              </div>
+            {/each}
+          </div>
+        </section>
+
+        <!-- Metadata + Settings two-column layout -->
+        <div class="two-col">
+          <!-- Metadata panel -->
+          <section class="panel metadata-panel">
+            <h2>Metadata</h2>
+            <div class="metadata-content">
+              {#if coverArt}
+                <img class="cover-art" src={coverArt} alt="Cover art" />
+              {:else}
+                <div class="cover-placeholder">
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <rect x="4" y="4" width="24" height="24" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                    <circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                    <path d="M4 22l6-6 4 4 4-4 10 10" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                  </svg>
+                </div>
+              {/if}
+              <div class="metadata-fields">
+                <label>
+                  <span>Title</span>
+                  <input type="text" bind:value={metadata.title} placeholder="Audiobook title" />
+                </label>
+                <label>
+                  <span>Author</span>
+                  <input type="text" bind:value={metadata.artist} placeholder="Author name" />
+                </label>
+                <label>
+                  <span>Album</span>
+                  <input type="text" bind:value={metadata.album} placeholder="Album / Series" />
+                </label>
+                <label>
+                  <span>Narrator</span>
+                  <input type="text" bind:value={metadata.narrator} placeholder="Narrator name" />
+                </label>
+                <label>
+                  <span>Year</span>
+                  <input type="text" bind:value={metadata.year} placeholder="Year" />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <!-- Output settings -->
+          <section class="panel output-panel">
+            <h2>Output</h2>
+            <div class="output-fields">
+              <label class="output-dir">
+                <span>Folder</span>
+                <div class="dir-input">
+                  <input type="text" bind:value={outputDir} placeholder="Output folder" />
+                  <button class="btn-browse" onclick={browseOutputDir}>Browse</button>
+                </div>
+              </label>
+              <label>
+                <span>Filename</span>
+                <div class="filename-input">
+                  <input type="text" bind:value={outputFilename} placeholder="output" />
+                  <span class="ext">.m4b</span>
+                </div>
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <!-- Encoding settings (shown when transcoding needed) -->
+        {#if needsTranscode}
+          <section class="panel encoding-panel">
+            <h2>Encoding</h2>
+            <p class="transcode-notice">{strategyLabel}</p>
+            {#if mergePlan.strategy !== "remux"}
+              <div class="encoding-fields">
+                <label>
+                  <span>Bitrate</span>
+                  <select bind:value={bitrate}>
+                    <option value={64}>64 kbps</option>
+                    <option value={96}>96 kbps</option>
+                    <option value={128}>128 kbps</option>
+                    <option value={192}>192 kbps</option>
+                    <option value={256}>256 kbps</option>
+                    <option value={320}>320 kbps</option>
+                  </select>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" bind:checked={mono} />
+                  <span>Mono (recommended for spoken word)</span>
+                </label>
+              </div>
+              <div class="transcode-files">
+                <span class="transcode-label">Files to transcode:</span>
+                {#each mergePlan.needs_transcode as path}
+                  <span class="transcode-file">{path.split("/").pop()}</span>
+                {/each}
+              </div>
+            {/if}
+          </section>
+        {/if}
+
+        <!-- Convert button -->
+        <div class="convert-section">
           <button
             class="btn-convert"
             onclick={startConvert}
@@ -515,9 +683,9 @@
             Bind audiobook
           </button>
           <p class="shortcut-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵</p>
-        {/if}
+        </div>
       </div>
-    </div>
+    {/if}
   {/if}
 </main>
 
@@ -681,6 +849,30 @@
     font-size: 12px;
     color: var(--text-secondary);
     margin: 0;
+  }
+
+  .drop-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .btn-drop-browse {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
+  }
+
+  .btn-drop-browse:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
   }
 
   .drop-hint {
@@ -1181,7 +1373,7 @@
     border-radius: 3px;
   }
 
-  /* ── Convert / Progress ────────────────────────────────────────────── */
+  /* ── Convert button ─────────────────────────────────────────────────── */
 
   .convert-section {
     padding: 4px 0;
@@ -1210,66 +1402,199 @@
   .btn-convert:active:not(:disabled) { transform: scale(0.99); }
   .btn-convert:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .btn-reveal {
+  .shortcut-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    text-align: center;
+    margin: 6px 0 0;
+  }
+
+  /* ── Converting screen ─────────────────────────────────────────────── */
+
+  .converting-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 0;
+  }
+
+  .converting-header {
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  .converting-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+  }
+
+  .converting-progress {
     width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .converting-percent {
+    font-size: 32px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+
+  .converting-bar-track {
+    width: 100%;
+    height: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .converting-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.3s linear;
+  }
+
+  .converting-message {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    text-align: center;
+  }
+
+  .converting-elapsed {
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn-cancel {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 32px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+  }
+
+  .btn-cancel:hover {
+    border-color: var(--error);
+    color: var(--error);
+    background: color-mix(in srgb, var(--error) 8%, transparent);
+  }
+
+  /* ── Complete screen ───────────────────────────────────────────────── */
+
+  .complete-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 0;
+  }
+
+  .complete-header {
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  .complete-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .complete-icon {
+    animation: fadeIn 300ms ease-out;
+  }
+
+  .complete-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .complete-filename {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    background: var(--surface);
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  .complete-stats {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .complete-stat-sep {
+    opacity: 0.4;
+  }
+
+  .complete-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .btn-reveal-complete {
     background: var(--success);
     color: white;
     border: none;
     font-family: var(--font);
     font-size: 13px;
     font-weight: 500;
-    padding: 0 24px;
-    height: 36px;
+    padding: 8px 24px;
     border-radius: var(--radius);
     cursor: pointer;
-    transition: background var(--transition), transform var(--transition);
+    transition: filter var(--transition), transform var(--transition);
   }
 
-  .btn-reveal:hover { filter: brightness(1.1); }
-  .btn-reveal:active { transform: scale(0.99); }
+  .btn-reveal-complete:hover { filter: brightness(1.1); }
+  .btn-reveal-complete:active { transform: scale(0.98); }
 
-  .progress-container {
-    width: 100%;
-    height: 36px;
-    background: var(--surface);
+  .btn-another {
+    background: none;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    position: relative;
-  }
-
-  .progress-bar {
-    height: 100%;
-    background: var(--accent);
-    transition: width 0.3s linear;
-    border-radius: var(--radius);
-  }
-
-  .progress-label {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 500;
     color: var(--text);
-    mix-blend-mode: difference;
-    pointer-events: none;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 24px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
   }
 
-  .progress-message {
-    font-size: 12px;
-    color: var(--text-secondary);
-    text-align: center;
-    margin: 6px 0 0;
-  }
-
-  .success-message {
-    font-size: 12px;
-    color: var(--success);
-    text-align: center;
-    margin: 6px 0 0;
+  .btn-another:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
   }
 
   /* ── Spinner ──────────────────────────────────────────────────────── */
@@ -1291,14 +1616,6 @@
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     flex-shrink: 0;
-  }
-
-  .shortcut-hint {
-    font-size: 11px;
-    color: var(--text-secondary);
-    opacity: 0.5;
-    text-align: center;
-    margin: 6px 0 0;
   }
 
   /* ── Animations ────────────────────────────────────────────────────── */

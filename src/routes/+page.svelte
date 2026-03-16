@@ -705,10 +705,9 @@
         <p class="drop-title">Drop files or folders here</p>
         <p class="drop-subtitle">MP3, M4A, M4B, AAC</p>
         <div class="drop-buttons">
-          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse files</button>
+          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse</button>
         </div>
-        <button class="btn-drop-folder" onclick={(e) => { e.stopPropagation(); browseFolder(); }}>or select a folder</button>
-        <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O to open files</p>
+        <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O</p>
       </div>
     {:else}
       <div class="content">

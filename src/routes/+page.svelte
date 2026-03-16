@@ -24,7 +24,10 @@
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-  let unlisten;
+  let unlistenProgress;
+  let unlistenDrop;
+  let unlistenDragOver;
+  let unlistenDragLeave;
 
   onMount(async () => {
     try {
@@ -35,13 +38,34 @@
       error = "ffmpeg/ffprobe not found. Please install ffmpeg.";
     }
 
-    unlisten = await listen("merge-progress", (event) => {
+    unlistenProgress = await listen("merge-progress", (event) => {
       progress = event.payload;
+    });
+
+    // Tauri file drop events (OS file drag-and-drop)
+    unlistenDrop = await listen("tauri://drag-drop", async (event) => {
+      dragOver = false;
+      const paths = event.payload.paths || [];
+      const audioPaths = paths.filter(p => /\.(mp3|m4a|m4b|aac)$/i.test(p));
+      if (audioPaths.length > 0) {
+        await addFiles(audioPaths);
+      }
+    });
+
+    unlistenDragOver = await listen("tauri://drag-over", () => {
+      dragOver = true;
+    });
+
+    unlistenDragLeave = await listen("tauri://drag-leave", () => {
+      dragOver = false;
     });
   });
 
   onDestroy(() => {
-    if (unlisten) unlisten();
+    if (unlistenProgress) unlistenProgress();
+    if (unlistenDrop) unlistenDrop();
+    if (unlistenDragOver) unlistenDragOver();
+    if (unlistenDragLeave) unlistenDragLeave();
   });
 
   // ── File handling ─────────────────────────────────────────────────────────
@@ -80,7 +104,7 @@
       }
 
       // Get merge plan
-      if (files.length >= 2) {
+      if (files.length >= 1) {
         mergePlan = await invoke("get_merge_plan", { paths: files.map(f => f.path) });
       } else {
         mergePlan = null;
@@ -121,7 +145,7 @@
   }
 
   async function updateMergePlan() {
-    if (files.length >= 2) {
+    if (files.length >= 1) {
       try {
         mergePlan = await invoke("get_merge_plan", { paths: files.map(f => f.path) });
       } catch (e) {
@@ -155,7 +179,7 @@
   // ── Convert ───────────────────────────────────────────────────────────────
 
   async function startConvert() {
-    if (files.length < 1) return;
+    if (files.length < 1 || !outputDir || !outputFilename) return;
     error = null;
     converting = true;
     outputPath = null;

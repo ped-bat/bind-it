@@ -23,6 +23,7 @@
   let dragOver = $state(false);
   let draggedIndex = $state(null);
   let dropTargetIndex = $state(null);
+  let probing = $state(false);
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -85,6 +86,13 @@
       e.preventDefault();
       clearAll();
     }
+    // Cmd+Enter / Ctrl+Enter — start conversion
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (files.length >= 1 && !converting && ffmpegOk) {
+        startConvert();
+      }
+    }
     // Escape — dismiss errors
     if (e.key === "Escape" && error) {
       error = null;
@@ -95,6 +103,7 @@
 
   async function addFiles(paths) {
     error = null;
+    probing = true;
     try {
       const probed = await invoke("probe_files", { paths });
       files = [...files, ...probed];
@@ -134,6 +143,8 @@
       }
     } catch (e) {
       error = String(e);
+    } finally {
+      probing = false;
     }
   }
 
@@ -305,7 +316,14 @@
     </div>
   {/if}
 
-  {#if files.length === 0}
+  {#if probing && files.length === 0}
+    <!-- Loading state while probing -->
+    <div class="drop-zone probing-state">
+      <div class="spinner"></div>
+      <p class="drop-title">Reading files…</p>
+      <p class="drop-subtitle">Probing audio metadata</p>
+    </div>
+  {:else if files.length === 0}
     <!-- Drop zone -->
     <div
       class="drop-zone"
@@ -320,13 +338,16 @@
     >
       <div class="drop-icon">
         <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-          <path d="M10 8h22l14 14v26a3 3 0 01-3 3H10a3 3 0 01-3-3V11a3 3 0 013-3z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-          <path d="M32 8v14h14" stroke="currentColor" stroke-width="1.5" fill="none"/>
-          <path d="M20 33h16M28 25v16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- Book spine -->
+          <path d="M14 8c0-1.1.9-2 2-2h4v44h-4a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <!-- Book cover -->
+          <path d="M20 6h20c1.1 0 2 .9 2 2v40c0 1.1-.9 2-2 2H20V6z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <!-- Audio wave lines -->
+          <path d="M27 22v12M31 18v20M35 24v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </div>
-      <p class="drop-title">Drop audio files here</p>
-      <p class="drop-subtitle">or click to browse · MP3, M4A, M4B, AAC</p>
+      <p class="drop-title">Drop audio files here or click to browse</p>
+      <p class="drop-subtitle">MP3, M4A, M4B, AAC</p>
       <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O to open files</p>
     </div>
   {:else}
@@ -336,6 +357,9 @@
         <div class="panel-header">
           <h2>Chapters</h2>
           <div class="panel-actions">
+            {#if probing}
+              <span class="spinner-inline"></span>
+            {/if}
             <button class="btn-text" onclick={browseFiles}>+ Add files</button>
             <button class="btn-text btn-text-danger" onclick={clearAll}>Clear all</button>
           </div>
@@ -490,6 +514,7 @@
           >
             Bind audiobook
           </button>
+          <p class="shortcut-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵</p>
         {/if}
       </div>
     </div>
@@ -617,15 +642,26 @@
     min-height: 240px;
   }
 
-  .drop-zone:hover, .drop-zone.drag-over {
+  .drop-zone:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+  }
+
+  .drop-zone.drag-over {
     border-color: var(--accent);
     border-style: solid;
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    transform: scale(1.005);
+  }
+
+  .drop-zone.probing-state {
+    cursor: default;
   }
 
   .drop-zone:hover .drop-icon, .drop-zone.drag-over .drop-icon {
     color: var(--accent);
-    opacity: 0.8;
+    opacity: 0.7;
+    transform: translateY(-2px);
   }
 
   .drop-icon {
@@ -687,10 +723,10 @@
   }
 
   .panel h2 {
-    font-size: 14px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--text-secondary);
     margin: 0 0 8px 0;
   }
@@ -716,8 +752,9 @@
     cursor: pointer;
     font-size: 12px;
     font-weight: 500;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 6px 10px;
+    min-height: 32px;
+    border-radius: var(--radius);
     transition: background var(--transition), color var(--transition);
   }
 
@@ -779,16 +816,26 @@
     cursor: grab;
     user-select: none;
     opacity: 0.3;
-    width: 14px;
-    text-align: center;
-    transition: opacity var(--transition);
+    min-width: 28px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: opacity var(--transition), background var(--transition);
   }
 
   .file-item:hover .drag-handle { opacity: 0.7; }
 
+  .drag-handle:hover {
+    opacity: 1 !important;
+    background: color-mix(in srgb, var(--border) 60%, transparent);
+  }
+
   .file-number {
     color: var(--text-secondary);
     font-size: 11px;
+    font-variant-numeric: tabular-nums;
     width: 18px;
     text-align: right;
     flex-shrink: 0;
@@ -849,14 +896,22 @@
     color: var(--text-secondary);
     cursor: pointer;
     font-size: 16px;
-    padding: 0 4px;
+    padding: 0;
+    min-width: 32px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
     opacity: 0;
-    transition: opacity var(--transition), color var(--transition);
-    border-radius: 4px;
+    transition: opacity var(--transition), background var(--transition), color var(--transition);
   }
 
   .file-item:hover .btn-remove { opacity: 1; }
-  .btn-remove:hover { color: var(--error); }
+  .btn-remove:hover {
+    color: var(--error);
+    background: color-mix(in srgb, var(--error) 12%, transparent);
+  }
 
   /* ── Metadata ──────────────────────────────────────────────────────── */
 
@@ -871,6 +926,14 @@
     border-radius: var(--radius);
     object-fit: cover;
     flex-shrink: 0;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+
+  .cover-art:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
   }
 
   .cover-placeholder {
@@ -885,6 +948,13 @@
     color: var(--text-secondary);
     opacity: 0.5;
     flex-shrink: 0;
+    cursor: pointer;
+    transition: border-color var(--transition), opacity var(--transition);
+  }
+
+  .cover-placeholder:hover {
+    border-color: var(--accent);
+    opacity: 0.8;
   }
 
   .metadata-fields {
@@ -923,7 +993,10 @@
   }
 
   .metadata-fields input:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-  .metadata-fields input:focus { border-color: var(--accent); }
+  .metadata-fields input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
 
   /* ── Output fields ─────────────────────────────────────────────────── */
 
@@ -964,7 +1037,10 @@
   }
 
   .dir-input input:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-  .dir-input input:focus { border-color: var(--accent); }
+  .dir-input input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
 
   .btn-browse {
     background: var(--bg);
@@ -984,7 +1060,11 @@
 
   .btn-browse:hover {
     border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  }
+
+  .btn-browse:active {
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg));
   }
 
   .filename-input {
@@ -1010,7 +1090,10 @@
   }
 
   .filename-input input:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-  .filename-input input:focus { border-color: var(--accent); }
+  .filename-input input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
 
   .filename-input .ext {
     background: var(--border);
@@ -1120,7 +1203,10 @@
     transition: background var(--transition), transform var(--transition);
   }
 
-  .btn-convert:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-convert:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
   .btn-convert:active:not(:disabled) { transform: scale(0.99); }
   .btn-convert:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -1186,7 +1272,40 @@
     margin: 6px 0 0;
   }
 
+  /* ── Spinner ──────────────────────────────────────────────────────── */
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 2.5px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .spinner-inline {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  .shortcut-hint {
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    text-align: center;
+    margin: 6px 0 0;
+  }
+
   /* ── Animations ────────────────────────────────────────────────────── */
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-4px); }

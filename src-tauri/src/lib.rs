@@ -93,16 +93,62 @@ pub fn clean_chapter_name(filename: &str) -> String {
 // ── Audio probing ───────────────────────────────────────────────────────────
 
 pub fn probe_all_files(paths: Vec<String>) -> Result<Vec<AudioFileInfo>, String> {
-    let mut results = Vec::new();
-    for path in paths {
-        results.push(probe_single_file(&path)?);
-    }
-    Ok(results)
+    let results: Vec<Result<AudioFileInfo, String>> = paths
+        .par_iter()
+        .map(|path| probe_single_file(path))
+        .collect();
+
+    results.into_iter().collect()
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProbeResult {
+    pub files: Vec<AudioFileInfo>,
+    pub warnings: Vec<String>,
 }
 
 #[tauri::command]
-fn probe_files(paths: Vec<String>) -> Result<Vec<AudioFileInfo>, String> {
-    probe_all_files(paths)
+fn probe_files(paths: Vec<String>) -> Result<ProbeResult, String> {
+    let mut files = Vec::new();
+    let mut warnings = Vec::new();
+
+    // Filter out 0-byte files before probing
+    let mut valid_paths = Vec::new();
+    for path in &paths {
+        match fs::metadata(path) {
+            Ok(meta) if meta.len() == 0 => {
+                let name = Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path);
+                warnings.push(format!("Skipped 0-byte file: {}", name));
+            }
+            Err(e) => {
+                let name = Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path);
+                warnings.push(format!("Cannot read {}: {}", name, e));
+            }
+            _ => valid_paths.push(path.clone()),
+        }
+    }
+
+    // Probe in parallel, collecting results
+    let results: Vec<(String, Result<AudioFileInfo, String>)> = valid_paths
+        .par_iter()
+        .map(|path| (path.clone(), probe_single_file(path)))
+        .collect();
+
+    for (path, result) in results {
+        match result {
+            Ok(info) => files.push(info),
+            Err(e) => {
+                let name = Path::new(&path).file_name().and_then(|n| n.to_str()).unwrap_or(&path);
+                warnings.push(format!("Skipped {}: {}", name, e));
+            }
+        }
+    }
+
+    if files.is_empty() && !warnings.is_empty() {
+        return Err(format!("No valid audio files found. {}", warnings.join("; ")));
+    }
+
+    Ok(ProbeResult { files, warnings })
 }
 
 pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
@@ -430,6 +476,22 @@ where
     })
 }
 
+// ── Unique filename helper ──────────────────────────────────────────────────
+
+fn unique_output_path(dir: &Path, filename: &str) -> PathBuf {
+    let candidate = dir.join(format!("{}.m4b", filename));
+    if !candidate.exists() {
+        return candidate;
+    }
+    for i in 1..=999 {
+        let candidate = dir.join(format!("{} ({}).m4b", filename, i));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(format!("{} (999).m4b", filename))
+}
+
 // ── Merge pipeline ──────────────────────────────────────────────────────────
 
 /// Core merge logic, callable without Tauri. The `emit` closure receives progress updates.
@@ -457,8 +519,16 @@ where
     };
 
     let tmp_dir = tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-    let output_path = PathBuf::from(&config.output_dir)
-        .join(format!("{}.m4b", &config.output_filename));
+
+    // Ensure output directory exists
+    let output_dir = PathBuf::from(&config.output_dir);
+    if !output_dir.exists() {
+        fs::create_dir_all(&output_dir)
+            .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    }
+
+    // Generate unique output filename if file already exists
+    let output_path = unique_output_path(&output_dir, &config.output_filename);
     let output_str = output_path.to_str().ok_or("Invalid output path")?;
 
     let channels_arg = if config.mono { "1" } else { "2" };
@@ -645,7 +715,17 @@ fn merge_audiobook(app: tauri::AppHandle, config: MergeConfig) -> Result<(), Str
                 if e.contains("Cancelled") {
                     let _ = app.emit("merge-cancelled", ());
                 } else {
-                    let _ = app.emit("merge-error", e);
+                    // Detect disk-full errors
+                    let msg = if e.contains("No space left")
+                        || e.contains("Disk full")
+                        || e.contains("ENOSPC")
+                        || e.contains("28")
+                    {
+                        "Disk full — not enough space to create the audiobook. Free up disk space and try again.".to_string()
+                    } else {
+                        e
+                    };
+                    let _ = app.emit("merge-error", msg);
                 }
             }
         }
@@ -754,25 +834,60 @@ pub fn add_metadata_and_cover(
 
 // ── Path resolution (folder support) ────────────────────────────────────────
 
-#[tauri::command]
-fn resolve_audio_paths(paths: Vec<String>) -> Vec<String> {
-    let audio_exts = ["mp3", "m4a", "m4b", "aac"];
-    let mut result = Vec::new();
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ResolvedPaths {
+    pub paths: Vec<String>,
+    pub folder_name: Option<String>,
+}
 
-    for path in paths {
-        let p = Path::new(&path);
+#[tauri::command]
+fn resolve_audio_paths(paths: Vec<String>) -> ResolvedPaths {
+    let audio_exts = ["mp3", "m4a", "m4b", "aac"];
+
+    // If a single directory was dropped, use its name as the suggested filename
+    let folder_name = if paths.len() == 1 {
+        let p = Path::new(&paths[0]);
+        if p.is_dir() {
+            p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+        } else {
+            // Files from the same folder — use parent folder name
+            p.parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+        }
+    } else if paths.len() > 1 {
+        // Multiple files — check if all share the same parent folder
+        let parents: std::collections::HashSet<_> = paths.iter()
+            .filter_map(|p| Path::new(p).parent().and_then(|pp| pp.to_str()))
+            .collect();
+        if parents.len() == 1 {
+            let parent = Path::new(parents.into_iter().next().unwrap());
+            parent.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let mut result = Vec::new();
+    for path in &paths {
+        let p = Path::new(path);
         if p.is_dir() {
             scan_dir_recursive(p, &audio_exts, &mut result);
         } else if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
             if audio_exts.contains(&ext.to_lowercase().as_str()) {
-                result.push(path);
+                result.push(path.clone());
             }
         }
     }
-
     result.sort();
-    result
+
+    ResolvedPaths { paths: result, folder_name }
 }
+
+
 
 fn scan_dir_recursive(dir: &Path, exts: &[&str], result: &mut Vec<String>) {
     if let Ok(entries) = fs::read_dir(dir) {

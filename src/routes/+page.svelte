@@ -89,9 +89,9 @@
       const paths = event.payload.paths || [];
       if (paths.length > 0) {
         try {
-          const resolved = await invoke("resolve_audio_paths", { paths });
-          if (resolved.length > 0) {
-            await addFiles(resolved);
+          const result = await invoke("resolve_audio_paths", { paths });
+          if (result.paths.length > 0) {
+            await addFiles(result.paths, result.folder_name);
           }
         } catch (e) {
           error = String(e);
@@ -169,11 +169,15 @@
 
   // ── File handling ─────────────────────────────────────────────────────────
 
-  async function addFiles(paths) {
+  async function addFiles(paths, folderName = null) {
     error = null;
     probing = true;
     try {
-      const probed = await invoke("probe_files", { paths });
+      const result = await invoke("probe_files", { paths });
+      const probed = result.files;
+      if (result.warnings && result.warnings.length > 0) {
+        error = result.warnings.join("\n");
+      }
       files = [...files, ...probed];
 
       if (files.length > 0 && !outputDir) {
@@ -193,7 +197,9 @@
           year: first.year || "",
         };
         if (!outputFilename || outputFilename === "audiobook") {
-          outputFilename = (first.album || first.title || "audiobook").replace(/[/\\:*?"<>|]/g, "");
+          // Prefer folder name, then metadata
+          const name = folderName || first.album || first.title || "audiobook";
+          outputFilename = name.replace(/[/\\:*?"<>|]/g, "");
         }
       }
 
@@ -235,9 +241,9 @@
     if (selected) {
       const paths = Array.isArray(selected) ? selected : [selected];
       try {
-        const resolved = await invoke("resolve_audio_paths", { paths });
-        if (resolved.length > 0) {
-          await addFiles(resolved);
+        const result = await invoke("resolve_audio_paths", { paths });
+        if (result.paths.length > 0) {
+          await addFiles(result.paths, result.folder_name);
         }
       } catch (e) {
         error = String(e);
@@ -425,14 +431,14 @@
 <main>
   {#if appState === "converting"}
     <!-- ── Converting screen ─────────────────────────────────────────── -->
-    <div class="converting-screen" in:fade={{ duration: 200 }}>
+    <div class="converting-screen" in:fade={{ duration: 300 }}>
       <header class="converting-header">
         <h1>Bindery</h1>
       </header>
 
       <div class="converting-content">
         <div class="converting-progress">
-          <p class="converting-percent">{Math.round(progress.percent)}%</p>
+          <p class="converting-percent"><span class="percent-value">{Math.round(progress.percent)}</span>%</p>
           <div class="converting-bar-track">
             <div class="converting-bar-fill" style="width: {progress.percent}%"></div>
           </div>
@@ -446,7 +452,7 @@
 
   {:else if appState === "complete"}
     <!-- ── Complete screen ───────────────────────────────────────────── -->
-    <div class="complete-screen" in:fade={{ duration: 200 }}>
+    <div class="complete-screen" in:fade={{ duration: 300 }}>
       <header class="complete-header">
         <h1>Bindery</h1>
       </header>
@@ -454,8 +460,8 @@
       <div class="complete-content">
         <div class="complete-icon">
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <circle cx="24" cy="24" r="22" stroke="var(--success)" stroke-width="2" fill="color-mix(in srgb, var(--success) 10%, transparent)"/>
-            <path d="M15 24l6 6 12-12" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <circle class="check-circle" cx="24" cy="24" r="22" stroke="var(--success)" stroke-width="2" fill="color-mix(in srgb, var(--success) 10%, transparent)"/>
+            <path class="check-path" d="M15 24l6 6 12-12" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           </svg>
         </div>
 
@@ -1457,6 +1463,11 @@
     letter-spacing: -0.02em;
   }
 
+  .percent-value {
+    display: inline-block;
+    transition: transform 0.3s ease-out;
+  }
+
   .converting-bar-track {
     width: 100%;
     height: 8px;
@@ -1470,7 +1481,13 @@
     height: 100%;
     background: var(--accent);
     border-radius: 4px;
-    transition: width 0.3s linear;
+    transition: width 0.5s ease-out;
+    animation: barPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes barPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.75; }
   }
 
   .converting-message {
@@ -1532,6 +1549,26 @@
 
   .complete-icon {
     animation: fadeIn 300ms ease-out;
+  }
+
+  .complete-icon .check-circle {
+    stroke-dasharray: 138;
+    stroke-dashoffset: 138;
+    animation: drawCircle 0.6s ease-out 0.1s forwards;
+  }
+
+  .complete-icon .check-path {
+    stroke-dasharray: 30;
+    stroke-dashoffset: 30;
+    animation: drawCheck 0.4s ease-out 0.5s forwards;
+  }
+
+  @keyframes drawCircle {
+    to { stroke-dashoffset: 0; }
+  }
+
+  @keyframes drawCheck {
+    to { stroke-dashoffset: 0; }
   }
 
   .complete-title {

@@ -614,7 +614,7 @@
         class="drop-zone"
         in:fade={{ duration: 200, delay: 100 }}
         class:drag-over={dragOver}
-        role="region"
+        role="button"
         aria-label="Drop audio files here or click to browse"
         tabindex="0"
         onclick={browseFiles}
@@ -655,14 +655,15 @@
               <button class="btn-text btn-text-danger" onclick={clearAll}>Clear all</button>
             </div>
           </div>
-          <div class="file-items" role="list" aria-label="Chapter list" onkeydown={handleFileListKeydown}>
+          <div class="file-items" role="listbox" tabindex="-1" aria-label="Chapter list" onkeydown={handleFileListKeydown}>
             {#each files as file, i (file.path)}
               <div
                 class="file-item"
                 class:dragging={draggedIndex === i}
                 class:drop-target={dropTargetIndex === i && draggedIndex !== i}
                 draggable="true"
-                role="listitem"
+                role="option"
+                aria-selected={i === focusedFileIndex}
                 tabindex={i === focusedFileIndex ? 0 : -1}
                 data-index={i}
                 aria-label="Chapter {i + 1}: {file.chapter_name}"
@@ -700,18 +701,18 @@
             <div class="metadata-content">
               <div class="cover-art-container">
                 {#if coverArt}
-                  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-                  <img class="cover-art" src={coverArt} alt="Cover art — click to change" tabindex="0" role="button" aria-label="Change cover art" onclick={chooseCoverArt} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseCoverArt(); } }} />
+                  <button class="cover-art-btn" onclick={chooseCoverArt} aria-label="Change cover art">
+                    <img class="cover-art" src={coverArt} alt="Cover art" />
+                  </button>
                   <button class="btn-remove-cover" onclick={(e) => { e.stopPropagation(); coverArt = null; coverArtPath = null; }} title="Remove cover art" aria-label="Remove cover art">×</button>
                 {:else}
-                  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-                  <div class="cover-placeholder" tabindex="0" role="button" aria-label="Choose cover art" onclick={chooseCoverArt} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chooseCoverArt(); } }}>
+                  <button class="cover-art-btn cover-placeholder" onclick={chooseCoverArt} aria-label="Choose cover art">
                     <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
                       <rect x="4" y="4" width="24" height="24" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
                       <circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/>
                       <path d="M4 22l6-6 4 4 4-4 10 10" stroke="currentColor" stroke-width="1.5" fill="none"/>
                     </svg>
-                  </div>
+                  </button>
                 {/if}
               </div>
               <div class="metadata-fields">
@@ -1304,18 +1305,26 @@
     border-color: var(--error);
   }
 
+  .cover-art-btn {
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
   .cover-art {
     width: 80px;
     height: 80px;
     border-radius: var(--radius);
     object-fit: cover;
-    flex-shrink: 0;
+    display: block;
     border: 1px solid var(--border);
-    cursor: pointer;
     transition: border-color var(--transition), box-shadow var(--transition);
   }
 
-  .cover-art:hover {
+  .cover-art-btn:hover .cover-art {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
   }
@@ -1925,10 +1934,10 @@
     opacity: 1;
   }
 
-  .cover-art:focus-visible,
-  .cover-placeholder:focus-visible {
+  .cover-art-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+    border-radius: var(--radius);
   }
 
   .btn-remove-cover:focus-visible {

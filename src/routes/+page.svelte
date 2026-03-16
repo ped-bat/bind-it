@@ -1,6 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount, onDestroy } from "svelte";
   import { fade, slide } from "svelte/transition";
@@ -43,8 +44,6 @@
   let unlistenError;
   let unlistenCancelled;
   let unlistenDrop;
-  let unlistenDragOver;
-  let unlistenDragLeave;
 
   onMount(async () => {
     try {
@@ -86,29 +85,28 @@
       appState = "setup";
     });
 
-    // Tauri file drop events (OS file drag-and-drop)
-    unlistenDrop = await listen("tauri://drag-drop", async (event) => {
-      dragOver = false;
-      if (appState !== "setup") return;
-      const paths = event.payload.paths || [];
-      if (paths.length > 0) {
-        try {
-          const result = await invoke("resolve_audio_paths", { paths });
-          if (result.paths.length > 0) {
-            await addFiles(result.paths, result.folder_name);
+    // Tauri 2 file drop events via webview API
+    unlistenDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
+      const { type } = event.payload;
+      if (type === "over" || type === "enter") {
+        dragOver = true;
+      } else if (type === "leave") {
+        dragOver = false;
+      } else if (type === "drop") {
+        dragOver = false;
+        if (appState !== "setup") return;
+        const paths = event.payload.paths || [];
+        if (paths.length > 0) {
+          try {
+            const result = await invoke("resolve_audio_paths", { paths });
+            if (result.paths.length > 0) {
+              await addFiles(result.paths, result.folder_name);
+            }
+          } catch (e) {
+            error = String(e);
           }
-        } catch (e) {
-          error = String(e);
         }
       }
-    });
-
-    unlistenDragOver = await listen("tauri://drag-over", () => {
-      dragOver = true;
-    });
-
-    unlistenDragLeave = await listen("tauri://drag-leave", () => {
-      dragOver = false;
     });
 
     // Keyboard shortcuts
@@ -121,8 +119,6 @@
     if (unlistenError) unlistenError();
     if (unlistenCancelled) unlistenCancelled();
     if (unlistenDrop) unlistenDrop();
-    if (unlistenDragOver) unlistenDragOver();
-    if (unlistenDragLeave) unlistenDragLeave();
     window.removeEventListener("keydown", handleKeydown);
     stopTimer();
   });

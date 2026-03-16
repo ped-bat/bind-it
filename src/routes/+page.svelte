@@ -11,6 +11,7 @@
 
   let files = $state([]);
   let coverArt = $state(null);
+  let coverArtPath = $state(null);
   let metadata = $state({ title: "", artist: "", album: "", narrator: "", year: "" });
   let outputDir = $state("");
   let outputFilename = $state("audiobook");
@@ -199,7 +200,10 @@
       // Get cover art
       if (!coverArt) {
         const art = await invoke("get_cover_art", { paths: files.map(f => f.path) });
-        if (art) coverArt = art;
+        if (art) {
+          coverArt = art.data_uri;
+          coverArtPath = art.file_path;
+        }
       }
 
       // Get merge plan
@@ -254,6 +258,7 @@
   function clearAll() {
     files = [];
     coverArt = null;
+    coverArtPath = null;
     metadata = { title: "", artist: "", album: "", narrator: "", year: "" };
     outputFilename = "audiobook";
     mergePlan = null;
@@ -324,7 +329,7 @@
       album: metadata.album || null,
       narrator: metadata.narrator || null,
       year: metadata.year || null,
-      cover_art_path: null,
+      cover_art_path: coverArtPath,
       bitrate,
       mono,
     };
@@ -361,6 +366,7 @@
   function convertAnother() {
     files = [];
     coverArt = null;
+    coverArtPath = null;
     metadata = { title: "", artist: "", album: "", narrator: "", year: "" };
     outputFilename = "audiobook";
     outputDir = "";

@@ -201,8 +201,15 @@ pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
 
 // ── Cover art ───────────────────────────────────────────────────────────────
 
+/// Returns (data_uri, file_path) — data_uri for UI display, file_path for embedding in output
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CoverArtResult {
+    pub data_uri: String,
+    pub file_path: String,
+}
+
 #[tauri::command]
-fn get_cover_art(paths: Vec<String>) -> Option<String> {
+fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
     if paths.is_empty() {
         return None;
     }
@@ -216,13 +223,16 @@ fn get_cover_art(paths: Vec<String>) -> Option<String> {
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
                     let ext = cover_path.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
                     let mime = if ext == "png" { "image/png" } else { "image/jpeg" };
-                    return Some(format!("data:{};base64,{}", mime, b64));
+                    return Some(CoverArtResult {
+                        data_uri: format!("data:{};base64,{}", mime, b64),
+                        file_path: cover_path.to_str().unwrap_or("").to_string(),
+                    });
                 }
             }
         }
     }
 
-    // 2. Extract embedded art from first file
+    // 2. Extract embedded art from first file to a persistent temp location
     let tmp = std::env::temp_dir().join("bindery_cover.jpg");
     let result = Command::new("ffmpeg")
         .args([
@@ -236,8 +246,10 @@ fn get_cover_art(paths: Vec<String>) -> Option<String> {
         if output.status.success() && tmp.exists() && tmp.metadata().map(|m| m.len() > 0).unwrap_or(false) {
             if let Ok(data) = fs::read(&tmp) {
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-                let _ = fs::remove_file(&tmp);
-                return Some(format!("data:image/jpeg;base64,{}", b64));
+                return Some(CoverArtResult {
+                    data_uri: format!("data:image/jpeg;base64,{}", b64),
+                    file_path: tmp.to_str().unwrap_or("").to_string(),
+                });
             }
         }
     }

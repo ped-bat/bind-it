@@ -4,7 +4,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount, onDestroy } from "svelte";
-  import { fade, slide } from "svelte/transition";
+  import { fade } from "svelte/transition";
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,7 @@
   let progress = $state({ stage: "", percent: 0, message: "" });
   let outputPath = $state(null);
   let error = $state(null);
+  let dismissingError = $state(false);
   let ffmpegOk = $state(null);
   let dragOver = $state(false);
   let draggedIndex = $state(null);
@@ -147,8 +148,8 @@
     if (e.key === "Escape") {
       if (appState === "converting") {
         cancelConvert();
-      } else if (error) {
-        error = null;
+      } else if (error && !dismissingError) {
+        dismissError();
       }
     }
   }
@@ -525,6 +526,15 @@
     requestAnimationFrame(() => { liveAnnouncement = msg; });
   }
 
+  function dismissError() {
+    if (dismissingError) return;
+    dismissingError = true;
+    setTimeout(() => {
+      error = null;
+      dismissingError = false;
+    }, 400);
+  }
+
   function handleFileListKeydown(e) {
     if (files.length === 0) return;
     const focusEl = (sel) => /** @type {HTMLElement|null} */ (document.querySelector(sel))?.focus();
@@ -639,7 +649,7 @@
     {/if}
 
     {#if error}
-      <div class="error-banner" transition:slide>
+      <div class="error-banner" class:dismissing={dismissingError}>
         <div class="error-content">
           {#each error.split("\n") as line}
             <span class="error-line">{line}</span>
@@ -648,7 +658,7 @@
             <span class="error-retry">Fix the issue above, then try again.</span>
           {/if}
         </div>
-        <button class="error-dismiss" onclick={() => error = null} title="Dismiss (Esc)" aria-label="Dismiss error">×</button>
+        <button class="error-dismiss" onclick={dismissError} title="Dismiss (Esc)" aria-label="Dismiss error">×</button>
       </div>
     {/if}
 
@@ -744,7 +754,7 @@
           </div>
         </section>
 
-        <!-- Metadata + Settings two-column layout -->
+        <!-- Metadata + Quality/Output two-column layout -->
         <div class="two-col">
           <!-- Metadata panel -->
           <section class="panel metadata-panel">
@@ -791,92 +801,93 @@
             </div>
           </section>
 
-          <!-- Output settings -->
-          <section class="panel output-panel">
-            <h2>Output</h2>
-            <div class="output-fields">
-              <label class="output-dir">
-                <span>Folder</span>
-                <div class="dir-input">
-                  <input type="text" bind:value={outputDir} placeholder="Output folder" />
-                  <button class="btn-browse" onclick={browseOutputDir}>Browse</button>
+          <!-- Right column: Quality + Output -->
+          <div class="right-col">
+            {#if mergePlan}
+              <section class="panel quality-panel">
+                <h2>Quality</h2>
+                <div class="encoding-toggle-row">
+                  <label class="checkbox-label">
+                    <input type="checkbox" bind:checked={lossless} />
+                    <span>Lossless</span>
+                  </label>
+                  {#if lossless}
+                    {#if mergePlan.strategy === "remux"}
+                      <span class="transcode-notice">Remux — no re-encoding needed</span>
+                    {:else}
+                      <span class="transcode-notice transcode-warn">Transcoding required for non-AAC files</span>
+                    {/if}
+                  {:else}
+                    <span class="transcode-notice">All files will be transcoded to AAC</span>
+                  {/if}
                 </div>
-              </label>
-              <label>
-                <span>Filename</span>
-                <div class="filename-input">
-                  <input type="text" bind:value={outputFilename} placeholder="output" />
-                  <span class="ext">.m4b</span>
-                </div>
-              </label>
-            </div>
-          </section>
-        </div>
-
-        <!-- Encoding settings -->
-        {#if mergePlan}
-          <section class="panel encoding-panel">
-            <h2>Encoding</h2>
-            <div class="encoding-toggle-row">
-              <label class="checkbox-label">
-                <input type="checkbox" bind:checked={lossless} />
-                <span>Lossless</span>
-              </label>
-              {#if lossless}
-                {#if mergePlan.strategy === "remux"}
-                  <span class="transcode-notice">Remux — no re-encoding needed</span>
-                {:else}
-                  <span class="transcode-notice transcode-warn">Transcoding required for non-AAC files</span>
+                {#if !lossless}
+                  <div class="encoding-fields">
+                    <label>
+                      <span>Bitrate</span>
+                      <select bind:value={bitrate}>
+                        <option value={64}>64 kbps</option>
+                        <option value={96}>96 kbps</option>
+                        <option value={128}>128 kbps</option>
+                        <option value={192}>192 kbps</option>
+                        <option value={256}>256 kbps</option>
+                        <option value={320}>320 kbps</option>
+                      </select>
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" bind:checked={mono} />
+                      <span>Mono (recommended for spoken word)</span>
+                    </label>
+                  </div>
+                {:else if needsTranscode && mergePlan.strategy !== "remux"}
+                  <div class="encoding-fields">
+                    <label>
+                      <span>Bitrate</span>
+                      <select bind:value={bitrate}>
+                        <option value={64}>64 kbps</option>
+                        <option value={96}>96 kbps</option>
+                        <option value={128}>128 kbps</option>
+                        <option value={192}>192 kbps</option>
+                        <option value={256}>256 kbps</option>
+                        <option value={320}>320 kbps</option>
+                      </select>
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" bind:checked={mono} />
+                      <span>Mono (recommended for spoken word)</span>
+                    </label>
+                  </div>
+                  <div class="transcode-files">
+                    <span class="transcode-label">Files to transcode:</span>
+                    {#each mergePlan.needs_transcode as path}
+                      <span class="transcode-file">{path.split("/").pop()}</span>
+                    {/each}
+                  </div>
                 {/if}
-              {:else}
-                <span class="transcode-notice">All files will be transcoded to AAC</span>
-              {/if}
-            </div>
-            {#if !lossless}
-              <div class="encoding-fields">
-                <label>
-                  <span>Bitrate</span>
-                  <select bind:value={bitrate}>
-                    <option value={64}>64 kbps</option>
-                    <option value={96}>96 kbps</option>
-                    <option value={128}>128 kbps</option>
-                    <option value={192}>192 kbps</option>
-                    <option value={256}>256 kbps</option>
-                    <option value={320}>320 kbps</option>
-                  </select>
-                </label>
-                <label class="checkbox-label">
-                  <input type="checkbox" bind:checked={mono} />
-                  <span>Mono (recommended for spoken word)</span>
-                </label>
-              </div>
-            {:else if needsTranscode && mergePlan.strategy !== "remux"}
-              <div class="encoding-fields">
-                <label>
-                  <span>Bitrate</span>
-                  <select bind:value={bitrate}>
-                    <option value={64}>64 kbps</option>
-                    <option value={96}>96 kbps</option>
-                    <option value={128}>128 kbps</option>
-                    <option value={192}>192 kbps</option>
-                    <option value={256}>256 kbps</option>
-                    <option value={320}>320 kbps</option>
-                  </select>
-                </label>
-                <label class="checkbox-label">
-                  <input type="checkbox" bind:checked={mono} />
-                  <span>Mono (recommended for spoken word)</span>
-                </label>
-              </div>
-              <div class="transcode-files">
-                <span class="transcode-label">Files to transcode:</span>
-                {#each mergePlan.needs_transcode as path}
-                  <span class="transcode-file">{path.split("/").pop()}</span>
-                {/each}
-              </div>
+              </section>
             {/if}
-          </section>
-        {/if}
+
+            <section class="panel output-panel">
+              <h2>Output</h2>
+              <div class="output-fields">
+                <label class="output-dir">
+                  <span>Folder</span>
+                  <div class="dir-input">
+                    <input type="text" bind:value={outputDir} placeholder="Output folder" />
+                    <button class="btn-browse" onclick={browseOutputDir}>Browse</button>
+                  </div>
+                </label>
+                <label>
+                  <span>Filename</span>
+                  <div class="filename-input">
+                    <input type="text" bind:value={outputFilename} placeholder="output" />
+                    <span class="ext">.m4b</span>
+                  </div>
+                </label>
+              </div>
+            </section>
+          </div>
+        </div>
 
         <!-- Convert button -->
         <div class="convert-section">
@@ -886,8 +897,9 @@
             disabled={files.length < 1 || !ffmpegOk}
           >
             {!lossless || needsTranscode ? "Bind audiobook (transcoding)" : "Bind audiobook"}
+            <span class="btn-shortcut">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵</span>
           </button>
-          <p class="shortcut-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵</p>
+          <button class="btn-cancel-setup" onclick={clearAll}>Cancel</button>
         </div>
       </div>
     {/if}
@@ -941,7 +953,7 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    padding: 24px;
+    padding: 24px 34px 24px 24px;
     box-sizing: border-box;
     gap: 24px;
     overflow-y: auto;
@@ -982,6 +994,17 @@
     font-size: 12px;
     flex-shrink: 0;
     animation: fadeIn 150ms ease-out;
+    overflow: hidden;
+  }
+
+  .error-banner.dismissing {
+    animation: errorDismiss 400ms ease-out forwards;
+  }
+
+  @keyframes errorDismiss {
+    0% { opacity: 1; max-height: 200px; padding: 8px 12px; }
+    50% { opacity: 0; max-height: 200px; padding: 8px 12px; }
+    100% { opacity: 0; max-height: 0; padding: 0 12px; }
   }
 
   .error-content {
@@ -1142,6 +1165,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    padding-right: 10px;
   }
 
   .two-col {
@@ -1377,14 +1401,16 @@
 
   .metadata-content {
     display: flex;
-    gap: 16px;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .cover-art-container {
     position: relative;
     flex-shrink: 0;
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
+    align-self: center;
   }
 
   .cover-art-container:hover .btn-remove-cover { opacity: 1; }
@@ -1426,8 +1452,8 @@
   }
 
   .cover-art {
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
     border-radius: var(--radius);
     object-fit: cover;
     display: block;
@@ -1441,8 +1467,8 @@
   }
 
   .cover-placeholder {
-    width: 80px;
-    height: 80px;
+    width: 100px;
+    height: 100px;
     border-radius: var(--radius);
     background: var(--bg);
     border: 1px solid var(--border);
@@ -1725,12 +1751,34 @@
   .btn-convert:active:not(:disabled) { transform: scale(0.99); }
   .btn-convert:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .shortcut-hint {
+  .btn-shortcut {
     font-size: 11px;
-    color: var(--text-secondary);
     opacity: 0.5;
-    text-align: center;
-    margin: 6px 0 0;
+    margin-left: 8px;
+  }
+
+  .btn-cancel-setup {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 24px;
+    cursor: pointer;
+    transition: color var(--transition);
+    margin-top: 4px;
+  }
+
+  .btn-cancel-setup:hover {
+    color: var(--text);
+  }
+
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
   }
 
   /* ── Converting screen ─────────────────────────────────────────────── */
@@ -2044,6 +2092,7 @@
   .btn-browse:focus-visible,
   .btn-convert:focus-visible,
   .btn-cancel:focus-visible,
+  .btn-cancel-setup:focus-visible,
   .btn-reveal-complete:focus-visible,
   .btn-another:focus-visible,
   .error-dismiss:focus-visible,

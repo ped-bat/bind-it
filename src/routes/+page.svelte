@@ -917,7 +917,8 @@
     --error: #C45D4E;
     --radius: 8px;
     --radius-lg: 12px;
-    --font: "Inter", system-ui, -apple-system, sans-serif;
+    --font: "Lato", system-ui, -apple-system, sans-serif;
+    --font-display: "Baskerville", "Big Caslon", Georgia, serif;
     --transition: 150ms ease-out;
   }
 
@@ -966,7 +967,7 @@
   }
 
   h1 {
-    font-family: "Instrument Serif", Georgia, serif;
+    font-family: var(--font-display);
     font-size: 20px;
     font-weight: 400;
     margin: 0;
@@ -1072,7 +1073,7 @@
   }
 
   .drop-zone-title {
-    font-family: "Instrument Serif", Georgia, serif;
+    font-family: var(--font-display);
     font-size: 30px;
     font-weight: 400;
     margin: 0 0 4px 0;

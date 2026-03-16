@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "audiobook-maker",
+  "productName": "Bindery",
   "version": "0.1.0",
-  "identifier": "com.petrov.audiobook-maker",
+  "identifier": "audio.bindery.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "audiobook-maker",
-        "width": 800,
-        "height": 600
+        "title": "Bindery",
+        "width": 720,
+        "height": 560,
+        "minWidth": 580,
+        "minHeight": 480
       }
     ],
     "security": {

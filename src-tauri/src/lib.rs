@@ -1353,3 +1353,176 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const M4B_DIR: &str = "/Users/petrov/Downloads/12 Rules for Life by Jordan B. Peterson";
+    const MP3_DIR: &str = "/Users/petrov/Downloads/21 Lessons for the 21st Century by Yuval Noah Harari";
+
+    fn m4b_paths(count: usize) -> Vec<String> {
+        let mut paths: Vec<String> = std::fs::read_dir(M4B_DIR)
+            .unwrap()
+            .filter_map(|e| {
+                let p = e.unwrap().path();
+                if p.extension().and_then(|x| x.to_str()) == Some("m4b") {
+                    Some(p.to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        paths.sort();
+        paths.truncate(count);
+        paths
+    }
+
+    fn mp3_paths(count: usize) -> Vec<String> {
+        let mut paths: Vec<String> = std::fs::read_dir(MP3_DIR)
+            .unwrap()
+            .filter_map(|e| {
+                let p = e.unwrap().path();
+                if p.extension().and_then(|x| x.to_str()) == Some("mp3") {
+                    Some(p.to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        paths.sort();
+        paths.truncate(count);
+        paths
+    }
+
+    #[test]
+    fn probe_m4b_files() {
+        let paths = m4b_paths(3);
+        assert!(!paths.is_empty(), "No M4B files found in test dir");
+        let result = probe_all_files(paths).expect("probe_all_files failed");
+        assert_eq!(result.len(), 3);
+        for f in &result {
+            assert_eq!(f.codec, "aac", "M4B files should have AAC codec");
+            assert!(f.duration > 0.0, "Duration should be positive");
+            assert!(f.sample_rate > 0, "Sample rate should be positive");
+        }
+        println!("M4B probe: {} files, first={}, duration={:.1}s, sr={}Hz",
+            result.len(), result[0].filename, result[0].duration, result[0].sample_rate);
+    }
+
+    #[test]
+    fn probe_mp3_files() {
+        let paths = mp3_paths(3);
+        assert!(!paths.is_empty(), "No MP3 files found in test dir");
+        let result = probe_all_files(paths).expect("probe_all_files failed");
+        assert_eq!(result.len(), 3);
+        for f in &result {
+            assert_eq!(f.codec, "mp3", "MP3 files should have mp3 codec");
+            assert!(f.duration > 0.0, "Duration should be positive");
+        }
+        println!("MP3 probe: {} files, first={}, duration={:.1}s",
+            result.len(), result[0].filename, result[0].duration);
+    }
+
+    #[test]
+    fn plan_m4b_remux() {
+        let paths = m4b_paths(5);
+        let plan = get_merge_plan(paths).expect("get_merge_plan failed");
+        assert_eq!(plan.strategy, "remux", "M4B files with uniform AAC should remux");
+        assert!(plan.needs_transcode.is_empty(), "No files should need transcoding");
+        assert!(plan.total_duration > 0.0);
+        println!("M4B plan: strategy={}, duration={:.0}s", plan.strategy, plan.total_duration);
+    }
+
+    #[test]
+    fn plan_mp3_transcode() {
+        let paths = mp3_paths(5);
+        let plan = get_merge_plan(paths.clone()).expect("get_merge_plan failed");
+        assert_eq!(plan.strategy, "transcode_mp3", "MP3 files should need transcode");
+        assert_eq!(plan.needs_transcode.len(), paths.len());
+        assert!(plan.total_duration > 0.0);
+        println!("MP3 plan: strategy={}, duration={:.0}s", plan.strategy, plan.total_duration);
+    }
+
+    #[test]
+    fn merge_m4b_remux() {
+        let paths = m4b_paths(3);
+        let tmp = tempfile::tempdir().unwrap();
+        let config = MergeConfig {
+            files: paths.iter().map(|p| FileEntry {
+                path: p.clone(),
+                chapter_name: clean_chapter_name(Path::new(p).file_stem().unwrap().to_str().unwrap()),
+            }).collect(),
+            output_dir: tmp.path().to_string_lossy().to_string(),
+            output_filename: "test_m4b_remux".to_string(),
+            title: Some("Test M4B Merge".to_string()),
+            artist: Some("Jordan B. Peterson".to_string()),
+            album: None,
+            narrator: None,
+            year: None,
+            cover_art_path: None,
+            bitrate: 64,
+            mono: false,
+            force_transcode: false,
+            durations: None,
+        };
+        let output = merge_audiobook_core(config, |stage, pct, msg| {
+            println!("  [{stage}] {pct:.0}% — {msg}");
+        }).expect("merge_audiobook_core failed");
+
+        assert!(Path::new(&output).exists(), "Output file should exist");
+
+        // Verify with ffprobe
+        let probe = std::process::Command::new("ffprobe")
+            .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_chapters", &output])
+            .output()
+            .expect("ffprobe failed");
+        let json: serde_json::Value = serde_json::from_slice(&probe.stdout).expect("invalid JSON");
+        let duration: f64 = json["format"]["duration"].as_str().unwrap().parse().unwrap();
+        assert!(duration > 10.0, "Output should have meaningful duration, got {duration}");
+        let chapters = json["chapters"].as_array().unwrap();
+        assert_eq!(chapters.len(), 3, "Should have 3 chapters");
+        println!("M4B merge output: {output}, duration={duration:.1}s, chapters={}", chapters.len());
+    }
+
+    #[test]
+    fn merge_mp3_transcode() {
+        let paths = mp3_paths(2); // Use 2 to keep test fast
+        let tmp = tempfile::tempdir().unwrap();
+        let config = MergeConfig {
+            files: paths.iter().map(|p| FileEntry {
+                path: p.clone(),
+                chapter_name: clean_chapter_name(Path::new(p).file_stem().unwrap().to_str().unwrap()),
+            }).collect(),
+            output_dir: tmp.path().to_string_lossy().to_string(),
+            output_filename: "test_mp3_transcode".to_string(),
+            title: Some("Test MP3 Merge".to_string()),
+            artist: Some("Yuval Noah Harari".to_string()),
+            album: None,
+            narrator: None,
+            year: None,
+            cover_art_path: None,
+            bitrate: 64,
+            mono: true,
+            force_transcode: false,
+            durations: None,
+        };
+        let output = merge_audiobook_core(config, |stage, pct, msg| {
+            println!("  [{stage}] {pct:.0}% — {msg}");
+        }).expect("merge_audiobook_core failed");
+
+        assert!(Path::new(&output).exists(), "Output file should exist");
+
+        // Verify with ffprobe
+        let probe = std::process::Command::new("ffprobe")
+            .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_chapters", &output])
+            .output()
+            .expect("ffprobe failed");
+        let json: serde_json::Value = serde_json::from_slice(&probe.stdout).expect("invalid JSON");
+        let duration: f64 = json["format"]["duration"].as_str().unwrap().parse().unwrap();
+        assert!(duration > 10.0, "Output should have meaningful duration, got {duration}");
+        let chapters = json["chapters"].as_array().unwrap();
+        assert_eq!(chapters.len(), 2, "Should have 2 chapters");
+        println!("MP3 merge output: {output}, duration={duration:.1}s, chapters={}", chapters.len());
+    }
+}

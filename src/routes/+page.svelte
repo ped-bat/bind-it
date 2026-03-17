@@ -10,8 +10,11 @@
 
   let appState = $state("setup"); // "setup" | "converting" | "complete"
 
+  /** @type {any[]} */
   let files = $state([]);
+  /** @type {string | null} */
   let coverArt = $state(null);
+  /** @type {string | null} */
   let coverArtPath = $state(null);
   let metadata = $state({ title: "", artist: "", album: "", narrator: "", year: "" });
   let outputDir = $state("");
@@ -19,14 +22,20 @@
   let bitrate = $state(64);
   let mono = $state(true);
   let lossless = $state(true);
-  let mergePlan = $state(null);
+  /** @type {{ strategy: string, needs_transcode: string[], total_duration: number } | null} */
+  let mergePlan = /** @type {{ strategy: string, needs_transcode: string[], total_duration: number } | null} */ ($state(null));
   let progress = $state({ stage: "", percent: 0, message: "" });
+  /** @type {string | null} */
   let outputPath = $state(null);
+  /** @type {string | null} */
   let error = $state(null);
   let dismissingError = $state(false);
+  /** @type {boolean | null} */
   let ffmpegOk = $state(null);
   let dragOver = $state(false);
+  /** @type {number | null} */
   let draggedIndex = $state(null);
+  /** @type {number | null} */
   let dropTargetIndex = $state(null);
   let probing = $state(false);
   let liveAnnouncement = $state("");
@@ -34,17 +43,24 @@
 
   // Conversion timing
   let elapsedSeconds = $state(0);
+  /** @type {ReturnType<typeof setInterval> | null} */
   let elapsedTimer = null;
 
   // Completion data
+  /** @type {{ filename: string, elapsed: number, fileCount: number, totalDuration: number, sizeBytes: number } | null} */
   let completionData = $state(null);
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+  /** @type {Function | undefined} */
   let unlistenProgress;
+  /** @type {Function | undefined} */
   let unlistenComplete;
+  /** @type {Function | undefined} */
   let unlistenError;
+  /** @type {Function | undefined} */
   let unlistenCancelled;
+  /** @type {Function | undefined} */
   let unlistenDrop;
 
   onMount(async () => {
@@ -126,6 +142,7 @@
     stopTimer();
   });
 
+  /** @param {KeyboardEvent} e */
   function handleKeydown(e) {
     // Cmd+O / Ctrl+O — add files
     if ((e.metaKey || e.ctrlKey) && e.key === "o" && appState === "setup") {
@@ -172,11 +189,15 @@
 
   // ── Dialog helpers ───────────────────────────────────────────────────────
 
-  /** Extract string path from a dialog result (may be string or {path:string} object) */
+  /**
+   * Extract string path from a dialog result (may be string or {path:string} object)
+   * @param {any} item
+   */
   function toPath(item) {
     return typeof item === "object" && item !== null && "path" in item ? item.path : item;
   }
 
+  /** @param {any} selected */
   function toPaths(selected) {
     const items = Array.isArray(selected) ? selected : [selected];
     return items.map(toPath);
@@ -184,6 +205,7 @@
 
   // ── File handling ─────────────────────────────────────────────────────────
 
+  /** @param {string[]} paths @param {string | null} [folderName] */
   async function addFiles(paths, folderName = null) {
     error = null;
     probing = true;
@@ -286,6 +308,7 @@
     }
   }
 
+  /** @param {DragEvent} e */
   function handleDrop(e) {
     e.preventDefault();
     dragOver = false;
@@ -302,11 +325,13 @@
     error = null;
   }
 
+  /** @param {number} index */
   function removeFile(index) {
     files = files.filter((_, i) => i !== index);
     updateMergePlan();
   }
 
+  /** @param {number} index @param {string} name */
   function updateChapterName(index, name) {
     files = files.map((f, i) => i === index ? { ...f, chapter_name: name } : f);
   }
@@ -328,14 +353,16 @@
   let pointerDragY = $state(0);
   let pointerDragActive = $state(false);
 
+  /** @param {number} index @param {PointerEvent} e */
   function dragStart(index, e) {
     // Only start drag from the drag handle
-    if (!e.target.closest('.drag-handle')) return;
+    if (!/** @type {HTMLElement} */ (e.target)?.closest('.drag-handle')) return;
     e.preventDefault();
     draggedIndex = index;
     pointerDragActive = true;
     pointerDragY = e.clientY;
 
+    /** @param {PointerEvent} me */
     const onMove = (me) => {
       if (draggedIndex === null) return;
       pointerDragY = me.clientY;
@@ -343,7 +370,7 @@
       const els = document.querySelectorAll('.file-item');
       for (const el of els) {
         const rect = el.getBoundingClientRect();
-        const idx = parseInt(el.dataset.index);
+        const idx = parseInt(/** @type {HTMLElement} */ (el).dataset.index ?? "");
         if (isNaN(idx) || idx === draggedIndex) continue;
         if (me.clientY >= rect.top && me.clientY <= rect.bottom) {
           if (dropTargetIndex !== idx) {
@@ -473,12 +500,14 @@
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  /** @param {number} seconds */
   function formatDuration(seconds) {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
+  /** @param {number} seconds */
   function formatDurationHuman(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -486,6 +515,7 @@
     return `${m}m`;
   }
 
+  /** @param {number} seconds */
   function formatElapsed(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -499,6 +529,7 @@
     return files.reduce((sum, f) => sum + f.duration, 0);
   }
 
+  /** @param {number} durationSec @param {number} bitrateKbps */
   function estimateFileSize(durationSec, bitrateKbps) {
     let effectiveBps;
     if (lossless && mergePlan?.strategy === "remux") {
@@ -514,6 +545,7 @@
     return `~${(bytes / 1024).toFixed(0)} KB`;
   }
 
+  /** @param {number} bytes */
   function formatFileSize(bytes) {
     if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
     if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
@@ -521,6 +553,7 @@
     return `${bytes} B`;
   }
 
+  /** @param {string} msg */
   function announce(msg) {
     liveAnnouncement = "";
     requestAnimationFrame(() => { liveAnnouncement = msg; });
@@ -535,9 +568,10 @@
     }, 400);
   }
 
+  /** @param {KeyboardEvent} e */
   function handleFileListKeydown(e) {
     if (files.length === 0) return;
-    const focusEl = (sel) => /** @type {HTMLElement|null} */ (document.querySelector(sel))?.focus();
+    const focusEl = (/** @type {string} */ sel) => /** @type {HTMLElement|null} */ (document.querySelector(sel))?.focus();
     if (e.key === "ArrowDown") {
       e.preventDefault();
       focusedFileIndex = Math.min(focusedFileIndex + 1, files.length - 1);
@@ -746,7 +780,7 @@
                   class="chapter-name"
                   type="text"
                   value={file.chapter_name}
-                  oninput={(e) => updateChapterName(i, e.target.value)}
+                  oninput={(e) => updateChapterName(i, /** @type {HTMLInputElement} */ (e.target).value)}
                   aria-label="Chapter {i + 1} name"
                 />
                 <span class="codec-badge" class:codec-aac={file.codec === "aac"} class:codec-mp3={file.codec === "mp3"} aria-label="{file.codec.toUpperCase()} format">
@@ -1149,23 +1183,6 @@
     background: color-mix(in srgb, var(--accent) 8%, var(--surface));
   }
 
-  .btn-drop-folder {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-family: var(--font);
-    font-size: 12px;
-    cursor: pointer;
-    padding: 2px 8px;
-    border-radius: var(--radius);
-    transition: color var(--transition);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-
-  .btn-drop-folder:hover {
-    color: var(--accent);
-  }
 
   .drop-hint {
     font-size: 11px;
@@ -2105,7 +2122,6 @@
   }
 
   .btn-drop-browse:focus-visible,
-  .btn-drop-folder:focus-visible,
   .btn-text:focus-visible,
   .btn-browse:focus-visible,
   .btn-convert:focus-visible,

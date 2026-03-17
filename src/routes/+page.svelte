@@ -841,8 +841,28 @@
             </div>
           </section>
 
-          <!-- Right column: Quality + Output -->
+          <!-- Right column: Output + Quality -->
           <div class="right-col">
+            <section class="panel output-panel">
+              <h2>Output</h2>
+              <div class="output-fields">
+                <label class="output-dir">
+                  <span>Folder</span>
+                  <div class="dir-input">
+                    <input type="text" bind:value={outputDir} placeholder="Output folder" />
+                    <button class="btn-browse" onclick={browseOutputDir}>Browse</button>
+                  </div>
+                </label>
+                <label>
+                  <span>Filename</span>
+                  <div class="filename-input">
+                    <input type="text" bind:value={outputFilename} placeholder="output" />
+                    <span class="ext">.m4b</span>
+                  </div>
+                </label>
+              </div>
+            </section>
+
             {#if mergePlan}
               <section class="panel quality-panel">
                 <h2>Quality</h2>
@@ -906,26 +926,6 @@
                 {/if}
               </section>
             {/if}
-
-            <section class="panel output-panel">
-              <h2>Output</h2>
-              <div class="output-fields">
-                <label class="output-dir">
-                  <span>Folder</span>
-                  <div class="dir-input">
-                    <input type="text" bind:value={outputDir} placeholder="Output folder" />
-                    <button class="btn-browse" onclick={browseOutputDir}>Browse</button>
-                  </div>
-                </label>
-                <label>
-                  <span>Filename</span>
-                  <div class="filename-input">
-                    <input type="text" bind:value={outputFilename} placeholder="output" />
-                    <span class="ext">.m4b</span>
-                  </div>
-                </label>
-              </div>
-            </section>
           </div>
         </div>
 
@@ -1464,9 +1464,8 @@
   .cover-art-container {
     position: relative;
     flex-shrink: 0;
-    width: 100px;
-    height: 100px;
-    align-self: center;
+    width: 100%;
+    height: 120px;
   }
 
   .cover-art-container:hover .btn-remove-cover { opacity: 1; }
@@ -1508,8 +1507,8 @@
   }
 
   .cover-art {
-    width: 100px;
-    height: 100px;
+    width: 100%;
+    height: 120px;
     border-radius: var(--radius);
     object-fit: cover;
     display: block;
@@ -1523,8 +1522,8 @@
   }
 
   .cover-placeholder {
-    width: 100px;
-    height: 100px;
+    width: 100%;
+    height: 120px;
     border-radius: var(--radius);
     background: var(--bg);
     border: 1px solid var(--border);

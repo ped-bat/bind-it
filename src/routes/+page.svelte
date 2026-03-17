@@ -947,6 +947,22 @@
 </main>
 
 <style>
+  @font-face {
+    font-family: "Lato";
+    src: url("/fonts/lato-regular.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: "Lato";
+    src: url("/fonts/lato-bold.ttf") format("truetype");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+
   :root {
     --bg: #FAFAF8;
     --surface: #F2F0EC;
@@ -976,6 +992,11 @@
       --success: #5A9A6A;
       --error: #D46E5E;
     }
+  }
+
+  :global(::selection) {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--text);
   }
 
   :global(body) {
@@ -1128,7 +1149,7 @@
   .drop-zone-title {
     font-family: var(--font-display);
     font-size: 30px;
-    font-weight: 400;
+    font-weight: 700;
     margin: 0 0 4px 0;
     letter-spacing: -0.02em;
     color: var(--text);

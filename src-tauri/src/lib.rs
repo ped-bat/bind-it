@@ -11,6 +11,46 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::LazyLock;
 use tauri::Emitter;
 
+// ── PATH fix for macOS GUI apps ──────────────────────────────────────────────
+// macOS app bundles don't inherit Homebrew/shell PATH. We search common locations.
+
+fn find_binary(name: &str) -> String {
+    // First try the system PATH (works in dev/terminal)
+    if let Ok(output) = Command::new("which").arg(name).output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return path;
+            }
+        }
+    }
+    // Common locations on macOS
+    let candidates = [
+        format!("/opt/homebrew/bin/{}", name),      // Apple Silicon Homebrew
+        format!("/usr/local/bin/{}", name),          // Intel Homebrew / manual install
+        format!("/usr/bin/{}", name),                // System
+        format!("/opt/local/bin/{}", name),          // MacPorts
+    ];
+    for path in &candidates {
+        if Path::new(path).exists() {
+            return path.clone();
+        }
+    }
+    // Fallback: bare name (will fail with a clear error)
+    name.to_string()
+}
+
+static FFMPEG_PATH: LazyLock<String> = LazyLock::new(|| find_binary("ffmpeg"));
+static FFPROBE_PATH: LazyLock<String> = LazyLock::new(|| find_binary("ffprobe"));
+
+fn ffmpeg() -> Command {
+    Command::new(FFMPEG_PATH.as_str())
+}
+
+fn ffprobe() -> Command {
+    Command::new(FFPROBE_PATH.as_str())
+}
+
 // ── Global state ─────────────────────────────────────────────────────────────
 
 static CANCEL_FLAG: AtomicBool = AtomicBool::new(false);
@@ -144,10 +184,10 @@ fn preflight_check(files: Vec<String>, output_dir: String, output_filename: Opti
     }
 
     // Check ffmpeg/ffprobe are available
-    if Command::new("ffmpeg").arg("-version").output().is_err() {
+    if ffmpeg().arg("-version").output().is_err() {
         errors.push("ffmpeg is required but not installed. Install it with: brew install ffmpeg".to_string());
     }
-    if Command::new("ffprobe").arg("-version").output().is_err() {
+    if ffprobe().arg("-version").output().is_err() {
         errors.push("ffprobe is required but not installed. Install it with: brew install ffmpeg".to_string());
     }
 
@@ -252,7 +292,7 @@ fn probe_files(paths: Vec<String>) -> Result<ProbeResult, String> {
 }
 
 pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
-    let output = Command::new("ffprobe")
+    let output = ffprobe()
         .args([
             "-v", "quiet",
             "-print_format", "json",
@@ -401,7 +441,7 @@ fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
         Err(_) => return None,
     };
 
-    let result = Command::new("ffmpeg")
+    let result = ffmpeg()
         .args([
             "-y", "-i", &paths[0],
             "-an", "-vcodec", "copy",
@@ -623,7 +663,7 @@ where
 
                 args.push(temp_str);
 
-                let mut child = Command::new("ffmpeg")
+                let mut child = ffmpeg()
                     .args(&args)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -834,7 +874,7 @@ where
 
         // Concat to intermediate file
         let intermediate = tmp_dir.path().join("merged.m4a");
-        let mut child = Command::new("ffmpeg")
+        let mut child = ffmpeg()
             .args([
                 "-y", "-f", "concat", "-safe", "0",
                 "-i", concat_list.to_str().unwrap(),
@@ -1103,7 +1143,7 @@ pub fn concat_aac_files(files: &[PathBuf], tmp_dir: &Path) -> Result<PathBuf, St
     }
 
     let output = tmp_dir.join("merged.m4a");
-    let mut child = Command::new("ffmpeg")
+    let mut child = ffmpeg()
         .args([
             "-y", "-f", "concat", "-safe", "0",
             "-i", concat_list.to_str().unwrap(),
@@ -1202,7 +1242,7 @@ pub fn add_metadata_and_cover(
         output.into(),
     ]);
 
-    let mut child = Command::new("ffmpeg")
+    let mut child = ffmpeg()
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -1322,7 +1362,7 @@ fn scan_dir_recursive(dir: &Path, exts: &[&str], result: &mut Vec<String>) {
 
 #[tauri::command]
 fn check_ffmpeg() -> Result<String, String> {
-    let output = Command::new("ffprobe")
+    let output = ffprobe()
         .arg("-version")
         .output()
         .map_err(|e| format!("ffprobe not found: {}", e))?;
@@ -1473,7 +1513,7 @@ mod tests {
         assert!(Path::new(&output).exists(), "Output file should exist");
 
         // Verify with ffprobe
-        let probe = std::process::Command::new("ffprobe")
+        let probe = std::process::Command::new(FFPROBE_PATH.as_str())
             .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_chapters", &output])
             .output()
             .expect("ffprobe failed");
@@ -1514,7 +1554,7 @@ mod tests {
         assert!(Path::new(&output).exists(), "Output file should exist");
 
         // Verify with ffprobe
-        let probe = std::process::Command::new("ffprobe")
+        let probe = std::process::Command::new(FFPROBE_PATH.as_str())
             .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_chapters", &output])
             .output()
             .expect("ffprobe failed");

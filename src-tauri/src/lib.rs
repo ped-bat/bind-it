@@ -15,16 +15,18 @@ use tauri::Emitter;
 // macOS app bundles don't inherit Homebrew/shell PATH. We search common locations.
 
 fn find_binary(name: &str) -> String {
-    // First try the system PATH (works in dev/terminal)
-    if let Ok(output) = Command::new("which").arg(name).output() {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return path;
+    // Search the system PATH (works in dev/terminal)
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let candidate = dir.join(name);
+            if candidate.exists() {
+                if let Some(s) = candidate.to_str() {
+                    return s.to_string();
+                }
             }
         }
     }
-    // Common locations on macOS
+    // macOS GUI apps often don't inherit shell PATH — check common locations
     let candidates = [
         format!("/opt/homebrew/bin/{}", name),      // Apple Silicon Homebrew
         format!("/usr/local/bin/{}", name),          // Intel Homebrew / manual install
@@ -499,9 +501,20 @@ fn set_custom_cover_art(path: String) -> Result<CoverArtResult, String> {
 
 // ── Merge plan ──────────────────────────────────────────────────────────────
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FilePlanInfo {
+    pub path: String,
+    pub codec: String,
+    pub sample_rate: u32,
+    pub channels: u32,
+    pub duration: f64,
+}
+
 #[tauri::command]
-fn get_merge_plan(paths: Vec<String>) -> Result<MergePlan, String> {
-    let files = probe_all_files(paths)?;
+fn get_merge_plan(files: Vec<FilePlanInfo>) -> Result<MergePlan, String> {
+    if files.is_empty() {
+        return Err("No files provided".to_string());
+    }
 
     let all_aac = files.iter().all(|f| f.codec == "aac");
     let all_mp3 = files.iter().all(|f| f.codec == "mp3");
@@ -615,6 +628,7 @@ fn transcode_parallel<F>(
     bitrate: &str,
     channels: &str,
     sample_rate: Option<u32>,
+    durations: &[f64],
     emit: &F,
     pct_start: f64,
     pct_end: f64,
@@ -632,9 +646,12 @@ where
         .build()
         .map_err(|e| format!("Thread pool error: {}", e))?;
 
-    let completed = AtomicUsize::new(0);
-    let total = items.len();
+    // Total duration of all items for progress weighting
+    let total_duration: f64 = items.iter().map(|(idx, _)| durations.get(*idx).copied().unwrap_or(0.0)).sum();
+    let completed_duration = std::sync::Mutex::new(0.0_f64);
     let pct_range = pct_end - pct_start;
+    let total = items.len();
+    let completed_count = AtomicUsize::new(0);
 
     pool.install(|| {
         items
@@ -644,11 +661,14 @@ where
                     return Err("Cancelled by user".to_string());
                 }
 
+                let file_duration = durations.get(*idx).copied().unwrap_or(0.0);
                 let temp_aac = tmp_dir.join(format!("part_{:04}.m4a", idx));
                 let temp_str = temp_aac.to_str().unwrap().to_string();
 
                 let mut args = vec![
-                    "-y".to_string(), "-i".to_string(), path.clone(),
+                    "-y".to_string(),
+                    "-progress".to_string(), "pipe:1".to_string(),
+                    "-i".to_string(), path.clone(),
                     "-c:a".to_string(), "aac".to_string(),
                     "-b:a".to_string(), bitrate.to_string(),
                     "-ac".to_string(), channels.to_string(),
@@ -670,6 +690,8 @@ where
                     .spawn()
                     .map_err(|e| format!("ffmpeg transcode failed: {}", e))?;
 
+                let mut last_emit = std::time::Instant::now();
+
                 let status = loop {
                     match child.try_wait() {
                         Ok(Some(status)) => break status,
@@ -678,6 +700,25 @@ where
                                 let _ = child.kill();
                                 let _ = child.wait();
                                 return Err("Cancelled by user".to_string());
+                            }
+                            // Emit sub-file progress every 500ms based on output file growth
+                            if last_emit.elapsed().as_millis() > 500 {
+                                last_emit = std::time::Instant::now();
+                                let temp_aac_path = tmp_dir.join(format!("part_{:04}.m4a", idx));
+                                if let Ok(meta) = std::fs::metadata(&temp_aac_path) {
+                                    let written = meta.len() as f64;
+                                    // Estimate: output bytes ≈ bitrate * duration / 8
+                                    let bitrate_bps: f64 = bitrate.trim_end_matches('k').parse::<f64>().unwrap_or(64.0) * 1000.0;
+                                    let expected_bytes = bitrate_bps * file_duration / 8.0;
+                                    if expected_bytes > 0.0 {
+                                        let file_frac = (written / expected_bytes).min(0.95);
+                                        let done_dur = completed_duration.lock().map(|d| *d).unwrap_or(0.0);
+                                        let overall = (done_dur + file_frac * file_duration) / total_duration;
+                                        let pct = pct_start + pct_range * overall.min(1.0);
+                                        let done = completed_count.load(Ordering::Relaxed);
+                                        emit("transcoding", pct, &format!("Transcoding file {} of {}", done + 1, total));
+                                    }
+                                }
                             }
                             std::thread::sleep(std::time::Duration::from_millis(100));
                         }
@@ -697,10 +738,21 @@ where
                     ));
                 }
 
-                let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                // Update completed duration and count — use duration-weighted progress
+                let new_completed_dur = {
+                    let mut d = completed_duration.lock().unwrap();
+                    *d += file_duration;
+                    *d
+                };
+                let done = completed_count.fetch_add(1, Ordering::Relaxed) + 1;
+                let weighted_pct = if total_duration > 0.0 {
+                    pct_start + (pct_range * (new_completed_dur / total_duration).min(1.0))
+                } else {
+                    pct_start + (pct_range * done as f64 / total as f64)
+                };
                 emit(
                     "transcoding",
-                    pct_start + (pct_range * done as f64 / total as f64),
+                    weighted_pct,
                     &format!("Transcoded {} of {} files", done, total),
                 );
 
@@ -833,7 +885,7 @@ where
     let force = config.force_transcode;
 
     let all_aac = !force && probed.iter().all(|f| f.codec == "aac");
-    let all_mp3 = probed.iter().all(|f| f.codec == "mp3");
+    let all_mp3 = !force && probed.iter().all(|f| f.codec == "mp3");
     let uniform_aac = all_aac && {
         let sr = probed[0].sample_rate;
         let ch = probed[0].channels;
@@ -939,7 +991,7 @@ where
 
         let transcoded = transcode_parallel(
             &mismatched_items, tmp_dir.path(), &bitrate_arg, channels_arg,
-            Some(target_sr), &emit, 10.0, 60.0,
+            Some(target_sr), &durations, &emit, 10.0, 60.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -981,7 +1033,7 @@ where
 
         let temp_aac_files = transcode_parallel(
             &items, tmp_dir.path(), &bitrate_arg, channels_arg,
-            None, &emit, 10.0, 60.0,
+            None, &durations, &emit, 10.0, 60.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -1040,7 +1092,7 @@ where
 
         let transcoded = transcode_parallel(
             &all_items, tmp_dir.path(), &bitrate_arg, channels_arg,
-            Some(target_sr), &emit, 10.0, 50.0,
+            Some(target_sr), &durations, &emit, 10.0, 50.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -1436,6 +1488,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires local audiobook files"]
     fn probe_m4b_files() {
         let paths = m4b_paths(3);
         assert!(!paths.is_empty(), "No M4B files found in test dir");
@@ -1451,6 +1504,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires local audiobook files"]
     fn probe_mp3_files() {
         let paths = mp3_paths(3);
         assert!(!paths.is_empty(), "No MP3 files found in test dir");
@@ -1465,6 +1519,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires local audiobook files"]
     fn plan_m4b_remux() {
         let paths = m4b_paths(5);
         let plan = get_merge_plan(paths).expect("get_merge_plan failed");
@@ -1475,6 +1530,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires local audiobook files"]
     fn plan_mp3_transcode() {
         let paths = mp3_paths(5);
         let plan = get_merge_plan(paths.clone()).expect("get_merge_plan failed");
@@ -1485,6 +1541,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires local audiobook files"]
     fn merge_m4b_remux() {
         let paths = m4b_paths(3);
         let tmp = tempfile::tempdir().unwrap();
@@ -1526,6 +1583,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires local audiobook files"]
     fn merge_mp3_transcode() {
         let paths = mp3_paths(2); // Use 2 to keep test fast
         let tmp = tempfile::tempdir().unwrap();

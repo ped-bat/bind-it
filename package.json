@@ -1,14 +1,15 @@
 {
-  "name": "audiobook-maker",
+  "name": "bindery",
   "version": "0.1.0",
-  "description": "",
+  "description": "Desktop app for merging audiobook chapter files into a single M4B with chapters, metadata, and cover art",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "tauri dev",
+    "dev:frontend": "vite dev",
+    "build": "tauri build",
+    "build:frontend": "vite build",
+    "preview": "tauri build --debug",
     "check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --watch",
     "tauri": "tauri"
   },
   "license": "MIT",

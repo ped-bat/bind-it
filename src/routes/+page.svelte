@@ -5,6 +5,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { onMount, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
+  import LogoMark from "$lib/LogoMark.svelte";
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,8 @@
   /** @type {{ strategy: string, needs_transcode: string[], total_duration: number } | null} */
   let mergePlan = /** @type {{ strategy: string, needs_transcode: string[], total_duration: number } | null} */ ($state(null));
   let progress = $state({ stage: "", percent: 0, message: "" });
+  let displayPercent = $state(0);
+  let displayMessage = $state("");
   /** @type {string | null} */
   let outputPath = $state(null);
   /** @type {string | null} */
@@ -39,6 +42,8 @@
   let dropTargetIndex = $state(null);
   let probing = $state(false);
   let liveAnnouncement = $state("");
+  /** @type {string | null} */
+  let warning = $state(null);
   let focusedFileIndex = $state(-1);
 
   // Conversion timing
@@ -74,6 +79,14 @@
 
     unlistenProgress = await listen("merge-progress", (event) => {
       progress = event.payload;
+      // Only update display if percent increased (never go backwards) and round to prevent flicker
+      const rounded = Math.round(progress.percent);
+      if (rounded > displayPercent) {
+        displayPercent = rounded;
+      }
+      if (progress.message !== displayMessage) {
+        displayMessage = progress.message;
+      }
     });
 
     unlistenComplete = await listen("merge-complete", (event) => {
@@ -81,7 +94,7 @@
       outputPath = path;
       stopTimer();
       completionData = {
-        filename: path.split("/").pop(),
+        filename: path.split(/[\\/]/).pop(),
         elapsed: elapsedSeconds,
         fileCount: files.length,
         totalDuration: totalDuration(),
@@ -213,10 +226,13 @@
       const result = await invoke("probe_files", { paths });
       const probed = result.files;
       if (result.warnings && result.warnings.length > 0) {
-        error = result.warnings.join("\n");
+        warning = result.warnings.join("\n");
       }
-      files = [...files, ...probed];
-      if (probed.length > 0) announce(`${probed.length} file${probed.length !== 1 ? "s" : ""} added`);
+      // Deduplicate by path
+      const existingPaths = new Set(files.map((/** @type {any} */ f) => f.path));
+      const newFiles = probed.filter((/** @type {any} */ f) => !existingPaths.has(f.path));
+      files = [...files, ...newFiles];
+      if (newFiles.length > 0) announce(`${newFiles.length} file${newFiles.length !== 1 ? "s" : ""} added`);
 
       if (files.length > 0 && !outputDir) {
         const firstPath = files[0].path;
@@ -252,7 +268,7 @@
 
       // Get merge plan
       if (files.length >= 1) {
-        mergePlan = await invoke("get_merge_plan", { paths: files.map(f => f.path) });
+        mergePlan = await invoke("get_merge_plan", { files: filePlanInfo() });
       } else {
         mergePlan = null;
       }
@@ -323,6 +339,7 @@
     mergePlan = null;
     outputPath = null;
     error = null;
+    warning = null;
   }
 
   /** @param {number} index */
@@ -336,10 +353,21 @@
     files = files.map((f, i) => i === index ? { ...f, chapter_name: name } : f);
   }
 
+  /** Build the file info payload for get_merge_plan (avoids re-probing in Rust) */
+  function filePlanInfo() {
+    return files.map(f => ({
+      path: f.path,
+      codec: f.codec,
+      sample_rate: f.sample_rate,
+      channels: f.channels,
+      duration: f.duration,
+    }));
+  }
+
   async function updateMergePlan() {
     if (files.length >= 1) {
       try {
-        mergePlan = await invoke("get_merge_plan", { paths: files.map(f => f.path) });
+        mergePlan = await invoke("get_merge_plan", { files: filePlanInfo() });
       } catch (e) {
         mergePlan = null;
       }
@@ -350,37 +378,102 @@
 
   // ── Drag reorder (pointer-based to avoid Tauri OS drop conflict) ────────
 
-  let pointerDragY = $state(0);
   let pointerDragActive = $state(false);
+  let dragOffsetY = $state(0);
+  let dragStartY = 0;
+
+  /**
+   * Custom animate function: spring-animates displaced items,
+   * but returns duration:0 for the actively dragged item so
+   * FLIP doesn't fight the manual translateY.
+   * @param {Element} node
+   * @param {{ from: DOMRect, to: DOMRect }} rects
+   */
+  function springFlip(node, { from, to }) {
+    if (node.classList.contains('dragging')) {
+      return { duration: 0 };
+    }
+    const dy = from.top - to.top;
+    const dx = from.left - to.left;
+    if (dy === 0 && dx === 0) return { duration: 0 };
+    return {
+      duration: 350,
+      css: (/** @type {number} */ t) => {
+        // Spring with gentle overshoot: peaks ~1.08 then settles to 1
+        const s = t === 0 ? 0 : t === 1 ? 1
+          : 1 - Math.pow(2, -6 * t) * Math.cos(t * Math.PI * 2);
+        return `transform: translate(${dx * (1 - s)}px, ${dy * (1 - s)}px)`;
+      }
+    };
+  }
 
   /** @param {number} index @param {PointerEvent} e */
   function dragStart(index, e) {
-    // Only start drag from the drag handle
     if (!/** @type {HTMLElement} */ (e.target)?.closest('.drag-handle')) return;
     e.preventDefault();
+
+    const el = /** @type {HTMLElement} */ (e.target).closest('.file-item');
+    if (!el) return;
+
+    const listEl = /** @type {HTMLElement | null} */ (el.closest('.file-items'));
+    const listRect = listEl ? listEl.getBoundingClientRect() : null;
+    const itemH = el.getBoundingClientRect().height;
+
     draggedIndex = index;
     pointerDragActive = true;
-    pointerDragY = e.clientY;
+    dragStartY = e.clientY;
+    dragOffsetY = 0;
 
     /** @param {PointerEvent} me */
     const onMove = (me) => {
       if (draggedIndex === null) return;
-      pointerDragY = me.clientY;
-      // Find which file item we're over
+      let raw = me.clientY - dragStartY;
+
+      // Clamp to list boundaries
+      if (listRect) {
+        const curEl = document.querySelector(`.file-item[data-index="${draggedIndex}"]`);
+        if (curEl) {
+          // Natural top = where the element sits in DOM without our transform
+          const curRect = curEl.getBoundingClientRect();
+          const naturalTop = curRect.top - dragOffsetY;
+          const clampedTop = Math.max(listRect.top, Math.min(naturalTop + raw, listRect.bottom - itemH));
+          raw = clampedTop - naturalTop;
+        }
+      }
+      dragOffsetY = raw;
+
+      // Find the visual center of the dragged item
+      const curEl = document.querySelector(`.file-item[data-index="${draggedIndex}"]`);
+      if (!curEl) return;
+      const curRect = curEl.getBoundingClientRect();
+      // curRect already includes our translateY, so this IS the visual position
+      const dragMidY = curRect.top + curRect.height / 2;
+
+      // Check neighbors for swap at 50% midpoint crossing
       const els = document.querySelectorAll('.file-item');
-      for (const el of els) {
-        const rect = el.getBoundingClientRect();
-        const idx = parseInt(/** @type {HTMLElement} */ (el).dataset.index ?? "");
+      for (const other of els) {
+        const idx = parseInt(/** @type {HTMLElement} */ (other).dataset.index ?? "");
         if (isNaN(idx) || idx === draggedIndex) continue;
-        if (me.clientY >= rect.top && me.clientY <= rect.bottom) {
-          if (dropTargetIndex !== idx) {
-            dropTargetIndex = idx;
-            const newFiles = [...files];
-            const [moved] = newFiles.splice(draggedIndex, 1);
-            newFiles.splice(idx, 0, moved);
-            files = newFiles;
-            draggedIndex = idx;
-          }
+        const rect = other.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+
+        if ((idx > draggedIndex && dragMidY > midY) ||
+            (idx < draggedIndex && dragMidY < midY)) {
+          // Perform the swap
+          const newFiles = [...files];
+          const [moved] = newFiles.splice(draggedIndex, 1);
+          newFiles.splice(idx, 0, moved);
+          files = newFiles;
+
+          // Adjust offset: the dragged item's DOM slot moved by (idx - draggedIndex) item heights.
+          // We compensate so the item stays visually under the cursor.
+          const slotDelta = (idx - draggedIndex) * itemH;
+          dragStartY += slotDelta;
+          // raw doesn't change — the visual position stays the same
+          dragOffsetY = me.clientY - dragStartY;
+
+          dropTargetIndex = idx;
+          draggedIndex = idx;
           break;
         }
       }
@@ -390,18 +483,13 @@
       draggedIndex = null;
       dropTargetIndex = null;
       pointerDragActive = false;
+      dragOffsetY = 0;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }
-
-  function dragEnd() {
-    draggedIndex = null;
-    dropTargetIndex = null;
-    pointerDragActive = false;
   }
 
   // ── Convert ───────────────────────────────────────────────────────────────
@@ -423,8 +511,7 @@
         return;
       }
       if (preflight.warnings.length > 0) {
-        error = preflight.warnings.join("\n");
-        // Show warnings but allow proceeding
+        warning = preflight.warnings.join("\n");
       }
     } catch (e) {
       error = String(e);
@@ -432,6 +519,8 @@
     }
 
     progress = { stage: "preparing", percent: 0, message: "Starting\u2026" };
+    displayPercent = 0;
+    displayMessage = "Starting\u2026";
 
     appState = "converting";
     startTimer();
@@ -492,6 +581,7 @@
     mergePlan = null;
     outputPath = null;
     error = null;
+    warning = null;
     completionData = null;
     progress = { stage: "", percent: 0, message: "" };
     elapsedSeconds = 0;
@@ -600,35 +690,28 @@
     }
   }
 
-  let needsTranscode = $derived(mergePlan && mergePlan.needs_transcode.length > 0);
-  let strategyLabel = $derived(
-    mergePlan?.strategy === "remux" ? "Lossless remux (no re-encoding)" :
-    mergePlan?.strategy === "transcode_mp3" ? "Transcode all to AAC" :
-    "Transcode non-AAC files to AAC"
-  );
 </script>
 
 <div class="sr-only" aria-live="polite" aria-atomic="true">{liveAnnouncement}</div>
-
 <main>
   {#if appState === "converting"}
     <!-- ── Converting screen ─────────────────────────────────────────── -->
     <div class="converting-screen" in:fade={{ duration: 300 }}>
       <header class="converting-header">
         <div class="logo-block">
-          <svg class="logo-mark" width="34" height="29" viewBox="0 0 1172 858" fill="none"><path d="M1171.96 655.745V789.672C1171.96 827.113 1141.61 857.472 1104.16 857.472C1066.72 857.472 1036.36 827.113 1036.36 789.672V698.733V591.042C1036.36 553.6 1006 523.241 968.562 523.241C931.121 523.241 900.762 553.6 900.762 591.042V698.733C900.762 736.175 870.402 766.534 832.961 766.534C795.519 766.534 765.16 736.175 765.16 698.733V181.318C765.16 143.877 795.519 113.517 832.961 113.517C870.402 113.517 900.762 143.864 900.762 181.305V253.294C900.762 290.736 931.121 321.095 968.562 321.095C1006 321.095 1036.36 290.736 1036.36 253.294V181.305V67.8007C1036.36 30.3593 1066.72 0 1104.16 0C1141.61 0 1171.96 30.3593 1171.96 67.8007V655.733Z" fill="currentColor"/><path d="M0 655.745V789.672C0 827.113 30.3593 857.472 67.8007 857.472C105.242 857.472 135.602 827.113 135.602 789.672V698.733V591.042C135.602 553.6 165.961 523.241 203.402 523.241C240.844 523.241 271.203 553.6 271.203 591.042V698.733C271.203 736.175 301.562 766.534 339.004 766.534C376.445 766.534 406.805 736.175 406.805 698.733V181.318C406.805 143.877 376.445 113.517 339.004 113.517C301.562 113.517 271.203 143.864 271.203 181.305V253.294C271.203 290.736 240.844 321.095 203.402 321.095C165.961 321.095 135.602 290.736 135.602 253.294V181.305V67.8134C135.602 30.372 105.242 .0127 67.8007 .0127C30.3593 .0127 0 30.372 0 67.8134V655.745Z" fill="currentColor"/><path d="M629.688 428.736C629.688 437.227 636.122 444.258 644.55 445.172C712.389 452.572 765.175 510.054 765.175 579.86V277.6C765.175 347.406 712.389 404.888 644.55 412.287C636.11 413.214 629.688 420.245 629.688 428.723Z" fill="currentColor"/><path d="M542.276 428.736C542.276 420.245 535.841 413.214 527.414 412.3C459.575 404.9 406.789 347.418 406.789 277.612V579.872C406.789 510.066 459.575 452.584 527.414 445.185C535.854 444.258 542.276 437.227 542.276 428.749Z" fill="currentColor"/></svg>
+          <LogoMark />
           <h1>Bindery</h1>
         </div>
       </header>
 
       <div class="converting-content">
         <div class="converting-progress">
-          <p class="converting-percent"><span class="percent-value">{Math.round(progress.percent)}</span>%</p>
-          <div class="converting-bar-track" role="progressbar" aria-valuenow={Math.round(progress.percent)} aria-valuemin={0} aria-valuemax={100} aria-label="Conversion progress">
-            <div class="converting-bar-fill" style="width: {progress.percent}%"></div>
+          <p class="converting-percent"><span class="percent-value">{displayPercent}</span>%</p>
+          <div class="converting-bar-track" role="progressbar" aria-valuenow={displayPercent} aria-valuemin={0} aria-valuemax={100} aria-label="Conversion progress">
+            <div class="converting-bar-fill" style="width: {displayPercent}%"></div>
           </div>
-          <p class="converting-message">{progress.message}</p>
-          <p class="converting-elapsed">{formatElapsed(elapsedSeconds)}</p>
+          <p class="converting-message">{displayMessage}</p>
+          <p class="converting-elapsed">Elapsed time: {formatElapsed(elapsedSeconds)}</p>
         </div>
 
         <button class="btn-cancel" onclick={cancelConvert} aria-label="Cancel conversion">Cancel</button>
@@ -640,39 +723,41 @@
     <div class="complete-screen" in:fade={{ duration: 300 }}>
       <header class="complete-header">
         <div class="logo-block">
-          <svg class="logo-mark" width="34" height="29" viewBox="0 0 1172 858" fill="none"><path d="M1171.96 655.745V789.672C1171.96 827.113 1141.61 857.472 1104.16 857.472C1066.72 857.472 1036.36 827.113 1036.36 789.672V698.733V591.042C1036.36 553.6 1006 523.241 968.562 523.241C931.121 523.241 900.762 553.6 900.762 591.042V698.733C900.762 736.175 870.402 766.534 832.961 766.534C795.519 766.534 765.16 736.175 765.16 698.733V181.318C765.16 143.877 795.519 113.517 832.961 113.517C870.402 113.517 900.762 143.864 900.762 181.305V253.294C900.762 290.736 931.121 321.095 968.562 321.095C1006 321.095 1036.36 290.736 1036.36 253.294V181.305V67.8007C1036.36 30.3593 1066.72 0 1104.16 0C1141.61 0 1171.96 30.3593 1171.96 67.8007V655.733Z" fill="currentColor"/><path d="M0 655.745V789.672C0 827.113 30.3593 857.472 67.8007 857.472C105.242 857.472 135.602 827.113 135.602 789.672V698.733V591.042C135.602 553.6 165.961 523.241 203.402 523.241C240.844 523.241 271.203 553.6 271.203 591.042V698.733C271.203 736.175 301.562 766.534 339.004 766.534C376.445 766.534 406.805 736.175 406.805 698.733V181.318C406.805 143.877 376.445 113.517 339.004 113.517C301.562 113.517 271.203 143.864 271.203 181.305V253.294C271.203 290.736 240.844 321.095 203.402 321.095C165.961 321.095 135.602 290.736 135.602 253.294V181.305V67.8134C135.602 30.372 105.242 .0127 67.8007 .0127C30.3593 .0127 0 30.372 0 67.8134V655.745Z" fill="currentColor"/><path d="M629.688 428.736C629.688 437.227 636.122 444.258 644.55 445.172C712.389 452.572 765.175 510.054 765.175 579.86V277.6C765.175 347.406 712.389 404.888 644.55 412.287C636.11 413.214 629.688 420.245 629.688 428.723Z" fill="currentColor"/><path d="M542.276 428.736C542.276 420.245 535.841 413.214 527.414 412.3C459.575 404.9 406.789 347.418 406.789 277.612V579.872C406.789 510.066 459.575 452.584 527.414 445.185C535.854 444.258 542.276 437.227 542.276 428.749Z" fill="currentColor"/></svg>
+          <LogoMark />
           <h1>Bindery</h1>
         </div>
       </header>
 
       <div class="complete-content">
-        <div class="complete-icon">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <circle class="check-circle" cx="24" cy="24" r="22" stroke="var(--success)" stroke-width="2" fill="color-mix(in srgb, var(--success) 10%, transparent)"/>
-            <path class="check-path" d="M15 24l6 6 12-12" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          </svg>
+        <div class="complete-hero">
+          <div class="complete-icon">
+            <svg width="50" height="50" viewBox="0 0 48 48" fill="none">
+              <circle class="check-circle" cx="24" cy="24" r="22" stroke="var(--accent)" stroke-width="2" fill="color-mix(in srgb, var(--accent) 10%, transparent)"/>
+              <path class="check-path" d="M15 24l6 6 12-12" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+          <h2 class="complete-title">Audiobook binded!</h2>
         </div>
 
-        <h2 class="complete-title">Audiobook created</h2>
-
         {#if completionData}
-          <p class="complete-filename">{completionData.filename}</p>
-          <div class="complete-stats">
-            <span>{completionData.fileCount} file{completionData.fileCount !== 1 ? "s" : ""}</span>
-            <span class="complete-stat-sep">&middot;</span>
-            <span>{formatDurationHuman(completionData.totalDuration)}</span>
-            <span class="complete-stat-sep">&middot;</span>
-            <span>{formatElapsed(completionData.elapsed)}</span>
-            {#if completionData.sizeBytes}
+          <div class="complete-details">
+            <p class="complete-filename">{completionData.filename}</p>
+            <div class="complete-stats">
+              <span>{completionData.fileCount} file{completionData.fileCount !== 1 ? "s" : ""}</span>
               <span class="complete-stat-sep">&middot;</span>
-              <span>{formatFileSize(completionData.sizeBytes)}</span>
-            {/if}
+              <span>{formatDurationHuman(completionData.totalDuration)}</span>
+              {#if completionData.sizeBytes}
+                <span class="complete-stat-sep">&middot;</span>
+                <span>{formatFileSize(completionData.sizeBytes)}</span>
+              {/if}
+            </div>
+            <p class="complete-processing-time">Processing time: {formatElapsed(completionData.elapsed)}</p>
           </div>
         {/if}
 
         <div class="complete-actions">
+          <button class="btn-another" onclick={convertAnother}>Bind another</button>
           <button class="btn-reveal-complete" onclick={revealInFinder}>Open folder</button>
-          <button class="btn-another" onclick={convertAnother}>Convert another</button>
         </div>
       </div>
     </div>
@@ -682,12 +767,9 @@
     {#if files.length > 0}
       <header>
         <div class="logo-block">
-          <svg class="logo-mark" width="34" height="29" viewBox="0 0 1172 858" fill="none"><path d="M1171.96 655.745V789.672C1171.96 827.113 1141.61 857.472 1104.16 857.472C1066.72 857.472 1036.36 827.113 1036.36 789.672V698.733V591.042C1036.36 553.6 1006 523.241 968.562 523.241C931.121 523.241 900.762 553.6 900.762 591.042V698.733C900.762 736.175 870.402 766.534 832.961 766.534C795.519 766.534 765.16 736.175 765.16 698.733V181.318C765.16 143.877 795.519 113.517 832.961 113.517C870.402 113.517 900.762 143.864 900.762 181.305V253.294C900.762 290.736 931.121 321.095 968.562 321.095C1006 321.095 1036.36 290.736 1036.36 253.294V181.305V67.8007C1036.36 30.3593 1066.72 0 1104.16 0C1141.61 0 1171.96 30.3593 1171.96 67.8007V655.733Z" fill="currentColor"/><path d="M0 655.745V789.672C0 827.113 30.3593 857.472 67.8007 857.472C105.242 857.472 135.602 827.113 135.602 789.672V698.733V591.042C135.602 553.6 165.961 523.241 203.402 523.241C240.844 523.241 271.203 553.6 271.203 591.042V698.733C271.203 736.175 301.562 766.534 339.004 766.534C376.445 766.534 406.805 736.175 406.805 698.733V181.318C406.805 143.877 376.445 113.517 339.004 113.517C301.562 113.517 271.203 143.864 271.203 181.305V253.294C271.203 290.736 240.844 321.095 203.402 321.095C165.961 321.095 135.602 290.736 135.602 253.294V181.305V67.8134C135.602 30.372 105.242 .0127 67.8007 .0127C30.3593 .0127 0 30.372 0 67.8134V655.745Z" fill="currentColor"/><path d="M629.688 428.736C629.688 437.227 636.122 444.258 644.55 445.172C712.389 452.572 765.175 510.054 765.175 579.86V277.6C765.175 347.406 712.389 404.888 644.55 412.287C636.11 413.214 629.688 420.245 629.688 428.723Z" fill="currentColor"/><path d="M542.276 428.736C542.276 420.245 535.841 413.214 527.414 412.3C459.575 404.9 406.789 347.418 406.789 277.612V579.872C406.789 510.066 459.575 452.584 527.414 445.185C535.854 444.258 542.276 437.227 542.276 428.749Z" fill="currentColor"/></svg>
+          <LogoMark />
           <h1>Bindery</h1>
         </div>
-        <span class="file-count">
-          {files.length} file{files.length !== 1 ? "s" : ""} · {formatDurationHuman(totalDuration())} · {estimateFileSize(totalDuration(), bitrate)}
-        </span>
       </header>
     {/if}
 
@@ -702,6 +784,17 @@
           {/if}
         </div>
         <button class="error-dismiss" onclick={dismissError} title="Dismiss (Esc)" aria-label="Dismiss error">×</button>
+      </div>
+    {/if}
+
+    {#if warning}
+      <div class="warning-banner">
+        <div class="warning-content">
+          {#each warning.split("\n") as line}
+            <span class="warning-line">{line}</span>
+          {/each}
+        </div>
+        <button class="warning-dismiss" onclick={() => warning = null} title="Dismiss" aria-label="Dismiss warning">×</button>
       </div>
     {/if}
 
@@ -728,20 +821,15 @@
         ondrop={handleDrop}
       >
         <div class="drop-icon">
-          <svg width="68" height="58" viewBox="0 0 1172 858" fill="none">
-            <path d="M1171.96 655.745V789.672C1171.96 827.113 1141.61 857.472 1104.16 857.472C1066.72 857.472 1036.36 827.113 1036.36 789.672V698.733V591.042C1036.36 553.6 1006 523.241 968.562 523.241C931.121 523.241 900.762 553.6 900.762 591.042V698.733C900.762 736.175 870.402 766.534 832.961 766.534C795.519 766.534 765.16 736.175 765.16 698.733V181.318C765.16 143.877 795.519 113.517 832.961 113.517C870.402 113.517 900.762 143.864 900.762 181.305V253.294C900.762 290.736 931.121 321.095 968.562 321.095C1006 321.095 1036.36 290.736 1036.36 253.294V181.305V67.8007C1036.36 30.3593 1066.72 0 1104.16 0C1141.61 0 1171.96 30.3593 1171.96 67.8007V655.733V655.745Z" fill="currentColor"/>
-            <path d="M0 655.745V789.672C0 827.113 30.3593 857.472 67.8007 857.472C105.242 857.472 135.602 827.113 135.602 789.672V698.733V591.042C135.602 553.6 165.961 523.241 203.402 523.241C240.844 523.241 271.203 553.6 271.203 591.042V698.733C271.203 736.175 301.562 766.534 339.004 766.534C376.445 766.534 406.805 736.175 406.805 698.733V181.318C406.805 143.877 376.445 113.517 339.004 113.517C301.562 113.517 271.203 143.864 271.203 181.305V253.294C271.203 290.736 240.844 321.095 203.402 321.095C165.961 321.095 135.602 290.736 135.602 253.294V181.305V67.8134C135.602 30.372 105.242 0.0126953 67.8007 0.0126953C30.3593 0.0126953 0 30.372 0 67.8134V190.596V314.343V655.745Z" fill="currentColor"/>
-            <path d="M629.688 428.736C629.688 437.227 636.122 444.258 644.55 445.172C712.389 452.572 765.175 510.054 765.175 579.86V277.6C765.175 347.406 712.389 404.888 644.55 412.287C636.11 413.214 629.688 420.245 629.688 428.723V428.736Z" fill="currentColor"/>
-            <path d="M542.276 428.736C542.276 420.245 535.841 413.214 527.414 412.3C459.575 404.9 406.789 347.418 406.789 277.612V579.872C406.789 510.066 459.575 452.584 527.414 445.185C535.854 444.258 542.276 437.227 542.276 428.749V428.736Z" fill="currentColor"/>
-          </svg>
+          <LogoMark width={68} height={58} />
         </div>
         <h1 class="drop-zone-title">Bindery</h1>
         <p class="drop-title">Drop files or folders here</p>
         <p class="drop-subtitle">MP3, M4A, M4B, AAC</p>
         <div class="drop-buttons">
-          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Browse</button>
+          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFiles(); }}>Add files</button>
+          <button class="btn-drop-browse" onclick={(e) => { e.stopPropagation(); browseFolder(); }}>Add folder</button>
         </div>
-        <p class="drop-hint">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+O</p>
       </div>
     {:else}
       <div class="content">
@@ -764,6 +852,7 @@
                 class="file-item"
                 class:dragging={draggedIndex === i}
                 class:drop-target={dropTargetIndex === i && draggedIndex !== i}
+                style={draggedIndex === i ? `transform: translateY(${dragOffsetY}px); z-index: 10;` : ''}
                 role="option"
                 aria-selected={i === focusedFileIndex}
                 tabindex={i === focusedFileIndex ? 0 : -1}
@@ -771,6 +860,7 @@
                 aria-label="Chapter {i + 1}: {file.chapter_name}"
                 onpointerdown={(e) => dragStart(i, e)}
                 onfocus={() => focusedFileIndex = i}
+                animate:springFlip
                 in:fade={{ duration: 150 }}
                 out:fade={{ duration: 100 }}
               >
@@ -866,64 +956,43 @@
             {#if mergePlan}
               <section class="panel quality-panel">
                 <h2>Quality</h2>
-                <div class="encoding-toggle-row">
-                  <label class="checkbox-label">
-                    <input type="checkbox" bind:checked={lossless} />
-                    <span>Lossless</span>
-                  </label>
-                  {#if lossless}
-                    {#if mergePlan.strategy === "remux"}
-                      <span class="transcode-notice">Remux — no re-encoding needed</span>
-                    {:else}
-                      <span class="transcode-notice transcode-warn">Transcoding required for non-AAC files</span>
-                    {/if}
-                  {:else}
-                    <span class="transcode-notice">All files will be transcoded to AAC</span>
-                  {/if}
+                <div class="encoding-fields">
+                  <div class="quality-group">
+                    <span class="quality-group-label">Channels</span>
+                    <label class="checkbox-label">
+                      <input type="checkbox" bind:checked={mono} />
+                      <span>Mono (half output size)</span>
+                    </label>
+                  </div>
+                  <div class="quality-group">
+                    <span class="quality-group-label">AAC settings</span>
+                    <label class="checkbox-label">
+                      <input type="checkbox" bind:checked={lossless} />
+                      <span>Preserve original quality (only AAC)</span>
+                    </label>
+                    <label>
+                      <span>Bitrate</span>
+                      <select bind:value={bitrate}>
+                        <option value={64}>64 kbps</option>
+                        <option value={96}>96 kbps</option>
+                        <option value={128}>128 kbps</option>
+                        <option value={192}>192 kbps</option>
+                        <option value={256}>256 kbps</option>
+                        <option value={320}>320 kbps</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="quality-group">
+                    <span class="quality-group-label">Expected output</span>
+                    <div class="expected-output">
+                      <span>{files.length} file{files.length !== 1 ? "s" : ""}</span>
+                      <span class="expected-sep">&middot;</span>
+                      <span>{formatDurationHuman(totalDuration())}</span>
+                      <span class="expected-sep">&middot;</span>
+                      <span>{estimateFileSize(totalDuration(), bitrate)}</span>
+                    </div>
+                  </div>
                 </div>
-                {#if !lossless}
-                  <div class="encoding-fields">
-                    <label>
-                      <span>Bitrate</span>
-                      <select bind:value={bitrate}>
-                        <option value={64}>64 kbps</option>
-                        <option value={96}>96 kbps</option>
-                        <option value={128}>128 kbps</option>
-                        <option value={192}>192 kbps</option>
-                        <option value={256}>256 kbps</option>
-                        <option value={320}>320 kbps</option>
-                      </select>
-                    </label>
-                    <label class="checkbox-label">
-                      <input type="checkbox" bind:checked={mono} />
-                      <span>Mono (recommended for spoken word)</span>
-                    </label>
-                  </div>
-                {:else if needsTranscode && mergePlan.strategy !== "remux"}
-                  <div class="encoding-fields">
-                    <label>
-                      <span>Bitrate</span>
-                      <select bind:value={bitrate}>
-                        <option value={64}>64 kbps</option>
-                        <option value={96}>96 kbps</option>
-                        <option value={128}>128 kbps</option>
-                        <option value={192}>192 kbps</option>
-                        <option value={256}>256 kbps</option>
-                        <option value={320}>320 kbps</option>
-                      </select>
-                    </label>
-                    <label class="checkbox-label">
-                      <input type="checkbox" bind:checked={mono} />
-                      <span>Mono (recommended for spoken word)</span>
-                    </label>
-                  </div>
-                  <div class="transcode-files">
-                    <span class="transcode-label">Files to transcode:</span>
-                    {#each mergePlan.needs_transcode as path}
-                      <span class="transcode-file">{path.split("/").pop()}</span>
-                    {/each}
-                  </div>
-                {/if}
               </section>
             {/if}
           </div>
@@ -931,15 +1000,14 @@
 
         <!-- Convert button -->
         <div class="convert-section">
+          <button class="btn-cancel-setup" onclick={clearAll}>Cancel</button>
           <button
             class="btn-convert"
             onclick={startConvert}
             disabled={files.length < 1 || !ffmpegOk}
           >
-            {!lossless || needsTranscode ? "Bind audiobook (transcoding)" : "Bind audiobook"}
-            <span class="btn-shortcut">{navigator.platform?.includes("Mac") ? "⌘" : "Ctrl"}+↵</span>
+            Bind it!
           </button>
-          <button class="btn-cancel-setup" onclick={clearAll}>Cancel</button>
         </div>
       </div>
     {/if}
@@ -947,51 +1015,21 @@
 </main>
 
 <style>
-  @font-face {
-    font-family: "Lato";
-    src: url("/fonts/lato-regular.ttf") format("truetype");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
-
-  @font-face {
-    font-family: "Lato";
-    src: url("/fonts/lato-bold.ttf") format("truetype");
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
-  }
-
   :root {
-    --bg: #FAFAF8;
-    --surface: #F2F0EC;
-    --border: #E2DFD9;
-    --text: #1A1918;
-    --text-secondary: #706B64;
-    --accent: #C67B30;
-    --accent-hover: #A86520;
-    --success: #4A7C59;
-    --error: #C45D4E;
+    --bg: #1A1918;
+    --surface: #242320;
+    --border: #3A3835;
+    --text: #EDECEA;
+    --text-secondary: #8A857E;
+    --accent: #D4893A;
+    --accent-hover: #E09A4A;
+    --success: #5A9A6A;
+    --error: #D46E5E;
     --radius: 8px;
     --radius-lg: 12px;
-    --font: "Lato", system-ui, -apple-system, sans-serif;
-    --font-display: "Baskerville", "Big Caslon", Georgia, serif;
+    --font: "Inter", system-ui, -apple-system, sans-serif;
+    --font-display: "Instrument Serif", Georgia, serif;
     --transition: 150ms ease-out;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #1A1918;
-      --surface: #242320;
-      --border: #3A3835;
-      --text: #EDECEA;
-      --text-secondary: #918C85;
-      --accent: #D4893A;
-      --accent-hover: #E09A4A;
-      --success: #5A9A6A;
-      --error: #D46E5E;
-    }
   }
 
   :global(::selection) {
@@ -1005,7 +1043,7 @@
     background: var(--bg);
     color: var(--text);
     font-family: var(--font);
-    font-size: 13px;
+    font-size: 16px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
@@ -1015,7 +1053,7 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
-    padding: 24px 34px 24px 24px;
+    padding: 24px;
     box-sizing: border-box;
     gap: 24px;
     overflow-y: auto;
@@ -1023,35 +1061,31 @@
 
   header {
     display: flex;
+    justify-content: center;
     align-items: baseline;
     gap: 12px;
     padding: 0 4px;
-    flex-shrink: 0;
   }
 
   .logo-block {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 4px;
   }
 
-  .logo-mark {
+  .logo-block :global(.logo-mark) {
     color: var(--accent);
   }
 
   h1 {
     font-family: var(--font-display);
-    font-size: 20px;
-    font-weight: 700;
+    font-size: 24px;
+    font-weight: 400;
     margin: 0;
     letter-spacing: -0.02em;
   }
 
-  .file-count {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
 
   /* ── Error banner ──────────────────────────────────────────────────── */
 
@@ -1063,7 +1097,7 @@
     border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
     color: var(--error);
     padding: 8px 12px;
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     font-size: 12px;
     flex-shrink: 0;
     animation: fadeIn 150ms ease-out;
@@ -1114,6 +1148,49 @@
     background: color-mix(in srgb, var(--error) 15%, transparent);
   }
 
+  /* ── Warning banner ───────────────────────────────────────────────── */
+
+  .warning-banner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--accent);
+    padding: 8px 12px;
+    border-radius: var(--radius-lg);
+    font-size: 12px;
+    flex-shrink: 0;
+    animation: fadeIn 150ms ease-out;
+  }
+
+  .warning-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .warning-line {
+    display: block;
+  }
+
+  .warning-dismiss {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    border-radius: 4px;
+    transition: background var(--transition);
+  }
+
+  .warning-dismiss:hover {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+
   /* ── Drop zone ─────────────────────────────────────────────────────── */
 
   .drop-zone {
@@ -1139,7 +1216,6 @@
     border-color: var(--accent);
     border-style: solid;
     background: color-mix(in srgb, var(--accent) 8%, transparent);
-    transform: scale(1.005);
   }
 
   .drop-zone.probing-state {
@@ -1148,8 +1224,8 @@
 
   .drop-zone-title {
     font-family: var(--font-display);
-    font-size: 30px;
-    font-weight: 700;
+    font-size: 36px;
+    font-weight: 400;
     margin: 0 0 4px 0;
     letter-spacing: -0.02em;
     color: var(--text);
@@ -1158,7 +1234,6 @@
   .drop-zone:hover .drop-icon, .drop-zone.drag-over .drop-icon {
     color: var(--accent);
     opacity: 0.7;
-    transform: translateY(-2px);
   }
 
   .drop-icon {
@@ -1168,14 +1243,14 @@
   }
 
   .drop-title {
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 500;
     margin: 0;
     color: var(--text);
   }
 
   .drop-subtitle {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--text-secondary);
     margin: 0;
   }
@@ -1183,34 +1258,27 @@
   .drop-buttons {
     display: flex;
     gap: 8px;
-    margin-top: 4px;
+    margin-top: 16px;
   }
 
   .btn-drop-browse {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--accent);
+    background: var(--accent);
+    border: none;
+    color: white;
     font-family: var(--font);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 14px;
-    border-radius: var(--radius);
+    font-size: 15px;
+    font-weight: 600;
+    padding: 10px 28px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
-    transition: background var(--transition), border-color var(--transition);
+    transition: background var(--transition);
   }
 
   .btn-drop-browse:hover {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    background: color-mix(in srgb, var(--accent) 80%, white);
   }
 
 
-  .drop-hint {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin: 8px 0 0 0;
-    opacity: 0.6;
-  }
 
   /* ── Content layout ────────────────────────────────────────────────── */
 
@@ -1246,7 +1314,7 @@
   }
 
   .panel h2 {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -1269,30 +1337,32 @@
   }
 
   .btn-text {
-    background: none;
+    background: var(--accent);
     border: none;
-    color: var(--accent);
+    color: white;
     cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 10px;
-    min-height: 32px;
-    border-radius: var(--radius);
-    transition: background var(--transition), color var(--transition);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 12px;
+    min-height: 28px;
+    border-radius: var(--radius-lg);
+    transition: background var(--transition);
   }
 
   .btn-text:hover {
-    color: var(--accent-hover);
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    background: color-mix(in srgb, var(--accent) 80%, white);
   }
 
   .btn-text-danger {
+    background: var(--surface);
+    border: 1px solid var(--border);
     color: var(--text-secondary);
   }
 
   .btn-text-danger:hover {
-    color: var(--error);
-    background: color-mix(in srgb, var(--error) 10%, transparent);
+    background: color-mix(in srgb, var(--surface) 80%, white);
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--border) 80%, white);
   }
 
   /* ── File list ─────────────────────────────────────────────────────── */
@@ -1306,20 +1376,23 @@
   .file-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border-radius: var(--radius);
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-lg);
     cursor: grab;
-    transition: background var(--transition), opacity var(--transition);
+    transition: background var(--transition), opacity var(--transition), box-shadow var(--transition);
     position: relative;
   }
 
   .file-item:hover {
-    background: color-mix(in srgb, var(--border) 50%, transparent);
+    background: color-mix(in srgb, var(--border) 40%, transparent);
   }
 
   .file-item.dragging {
-    opacity: 0.4;
+    opacity: 0.95;
+    background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    transition: background var(--transition), box-shadow var(--transition);
   }
 
   .file-item.drop-target::before {
@@ -1335,13 +1408,13 @@
 
   .drag-handle {
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 18px;
     cursor: grab;
     user-select: none;
     touch-action: none;
     opacity: 0.4;
-    min-width: 28px;
-    min-height: 32px;
+    min-width: 32px;
+    min-height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1372,8 +1445,8 @@
     border: 1px solid transparent;
     color: var(--text);
     font-family: var(--font);
-    font-size: 13px;
-    padding: 4px 6px;
+    font-size: 15px;
+    padding: 6px 8px;
     border-radius: 4px;
     outline: none;
     min-width: 0;
@@ -1443,7 +1516,7 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    opacity: 0;
+    opacity: 0.8;
     transition: opacity var(--transition), background var(--transition), color var(--transition);
   }
 
@@ -1458,46 +1531,46 @@
   .metadata-content {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    align-items: center;
+    gap: 16px;
   }
 
   .cover-art-container {
     position: relative;
     flex-shrink: 0;
-    width: 100%;
-    height: 120px;
+    display: inline-flex;
+    align-self: center;
   }
-
-  .cover-art-container:hover .btn-remove-cover { opacity: 1; }
 
   .btn-remove-cover {
     position: absolute;
-    top: -6px;
-    right: -6px;
-    width: 20px;
-    height: 20px;
+    top: -14px;
+    right: -14px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--bg);
     color: var(--text-secondary);
-    font-size: 13px;
+    font-size: 16px;
     line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
+    opacity: 0.8;
     transition: opacity var(--transition), background var(--transition), color var(--transition);
-    z-index: 1;
+    z-index: 2;
   }
 
   .btn-remove-cover:hover {
+    opacity: 1;
     color: var(--error);
     background: color-mix(in srgb, var(--error) 12%, transparent);
-    border-color: var(--error);
   }
 
   .cover-art-btn {
+    position: relative;
     padding: 0;
     margin: 0;
     background: none;
@@ -1507,9 +1580,9 @@
   }
 
   .cover-art {
-    width: 100%;
+    width: 120px;
     height: 120px;
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     object-fit: cover;
     display: block;
     border: 1px solid var(--border);
@@ -1522,9 +1595,9 @@
   }
 
   .cover-placeholder {
-    width: 100%;
+    width: 120px;
     height: 120px;
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     background: var(--bg);
     border: 1px solid var(--border);
     display: flex;
@@ -1544,9 +1617,10 @@
 
   .metadata-fields {
     flex: 1;
+    width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 12px;
     min-width: 0;
   }
 
@@ -1557,7 +1631,7 @@
   }
 
   .metadata-fields label span {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--text-secondary);
     font-weight: 500;
   }
@@ -1567,12 +1641,12 @@
     border: 1px solid var(--border);
     color: var(--text);
     font-family: var(--font);
-    font-size: 13px;
-    padding: 6px 8px;
+    font-size: 15px;
+    padding: 8px 10px;
     border-radius: 4px;
     outline: none;
     min-width: 0;
-    height: 36px;
+    height: 40px;
     box-sizing: border-box;
     transition: border-color var(--transition);
   }
@@ -1588,7 +1662,7 @@
   .output-fields {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
   }
 
   .output-fields label {
@@ -1696,27 +1770,11 @@
 
   /* ── Encoding ──────────────────────────────────────────────────────── */
 
-  .encoding-toggle-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-
-  .transcode-warn {
-    color: var(--accent);
-  }
-
-  .transcode-notice {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin: 0;
-  }
 
   .encoding-fields {
     display: flex;
+    flex-direction: column;
     gap: 16px;
-    align-items: end;
     margin-bottom: 8px;
   }
 
@@ -1727,7 +1785,7 @@
   }
 
   .encoding-fields label > span {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--text-secondary);
     font-weight: 500;
   }
@@ -1737,11 +1795,11 @@
     border: 1px solid var(--border);
     color: var(--text);
     font-family: var(--font);
-    font-size: 13px;
-    padding: 6px 8px;
+    font-size: 15px;
+    padding: 8px 10px;
     border-radius: 4px;
     outline: none;
-    height: 36px;
+    height: 40px;
     box-sizing: border-box;
     transition: border-color var(--transition);
   }
@@ -1752,82 +1810,94 @@
   .checkbox-label {
     flex-direction: row !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 8px !important;
   }
 
-  .checkbox-label input[type="checkbox"] { accent-color: var(--accent); }
+  .checkbox-label > span {
+    font-size: 15px !important;
+    color: var(--text) !important;
+    font-weight: 400 !important;
+  }
 
-  .transcode-files {
+  .checkbox-label input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .quality-group {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    align-items: center;
+    flex-direction: column;
+    gap: 2px;
   }
 
-  .transcode-label {
-    font-size: 11px;
+  .quality-group-label {
+    font-size: 13px;
+    font-weight: 600;
     color: var(--text-secondary);
   }
 
-  .transcode-file {
-    font-size: 11px;
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent);
-    padding: 1px 6px;
-    border-radius: 3px;
+  .expected-output {
+    font-size: 15px;
+    color: var(--text);
+  }
+
+  .expected-sep {
+    margin: 0 4px;
+    color: var(--text-secondary);
   }
 
   /* ── Convert button ─────────────────────────────────────────────────── */
 
   .convert-section {
+    display: flex;
+    gap: 24px;
     padding: 4px 0;
     flex-shrink: 0;
   }
 
   .btn-convert {
-    width: 100%;
+    flex: 1;
     background: var(--accent);
     color: white;
     border: none;
     font-family: var(--font);
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 16px;
+    font-weight: 600;
     padding: 0 24px;
-    height: 36px;
-    border-radius: var(--radius);
+    height: 44px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
     transition: background var(--transition), transform var(--transition);
   }
 
   .btn-convert:hover:not(:disabled) {
-    background: var(--accent-hover);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 80%, white);
   }
   .btn-convert:active:not(:disabled) { transform: scale(0.99); }
   .btn-convert:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .btn-shortcut {
-    font-size: 11px;
-    opacity: 0.5;
-    margin-left: 8px;
-  }
 
   .btn-cancel-setup {
-    width: 100%;
-    background: none;
-    border: none;
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
     color: var(--text-secondary);
     font-family: var(--font);
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 500;
-    padding: 8px 24px;
+    padding: 0 24px;
+    height: 44px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
-    transition: color var(--transition);
-    margin-top: 4px;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
   }
 
   .btn-cancel-setup:hover {
+    background: color-mix(in srgb, var(--surface) 80%, white);
     color: var(--text);
+    border-color: color-mix(in srgb, var(--border) 80%, white);
   }
 
   .right-col {
@@ -1846,8 +1916,9 @@
   }
 
   .converting-header {
+    display: flex;
+    justify-content: center;
     padding: 0 4px;
-    flex-shrink: 0;
   }
 
   .converting-content {
@@ -1872,9 +1943,12 @@
     font-size: 32px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
     color: var(--text);
     margin: 0;
     letter-spacing: -0.02em;
+    min-width: 4.5ch;
+    text-align: center;
   }
 
   .percent-value {
@@ -1884,17 +1958,17 @@
 
   .converting-bar-track {
     width: 100%;
-    height: 8px;
+    height: 16px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 999px;
     overflow: hidden;
   }
 
   .converting-bar-fill {
     height: 100%;
     background: var(--accent);
-    border-radius: 4px;
+    border-radius: 999px;
     transition: width 0.5s ease-out;
     position: relative;
     overflow: hidden;
@@ -1904,57 +1978,62 @@
     content: "";
     position: absolute;
     top: 0;
-    left: -60%;
-    width: 60%;
+    left: -100%;
+    width: 100%;
     height: 100%;
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(255, 255, 255, 0.35) 45%,
+      rgba(255, 255, 255, 0.15) 20%,
+      rgba(255, 255, 255, 0.35) 40%,
       rgba(255, 255, 255, 0.45) 50%,
-      rgba(255, 255, 255, 0.35) 55%,
+      rgba(255, 255, 255, 0.35) 60%,
+      rgba(255, 255, 255, 0.15) 80%,
       transparent 100%
     );
-    animation: barSweep 1.6s ease-in-out infinite;
+    animation: barSweep 2s ease-in-out infinite;
   }
 
   @keyframes barSweep {
     0% { transform: translateX(-100%); }
-    100% { transform: translateX(260%); }
+    100% { transform: translateX(200%); }
   }
 
   .converting-message {
-    font-size: 13px;
+    font-size: 16px;
     color: var(--text-secondary);
     margin: 0;
     text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
 
   .converting-elapsed {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-secondary);
     opacity: 0.6;
-    margin: 0;
+    margin: -4px 0 0 0;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
 
   .btn-cancel {
-    background: none;
+    background: var(--surface);
     border: 1px solid var(--border);
     color: var(--text-secondary);
     font-family: var(--font);
-    font-size: 13px;
+    font-size: 16px;
     font-weight: 500;
-    padding: 8px 32px;
-    border-radius: var(--radius);
+    padding: 12px 32px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
     transition: background var(--transition), border-color var(--transition), color var(--transition);
   }
 
   .btn-cancel:hover {
-    border-color: var(--error);
-    color: var(--error);
-    background: color-mix(in srgb, var(--error) 8%, transparent);
+    background: color-mix(in srgb, var(--surface) 80%, white);
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--border) 80%, white);
   }
 
   /* ── Complete screen ───────────────────────────────────────────────── */
@@ -1977,7 +2056,30 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
+    gap: 0;
+  }
+
+  .complete-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .complete-details {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    max-width: 50%;
+  }
+
+  .complete-processing-time {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 4px 0 0 0;
   }
 
   .complete-icon {
@@ -2012,27 +2114,32 @@
   }
 
   .complete-title {
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 600;
     color: var(--text);
     margin: 0;
   }
 
   .complete-filename {
-    font-size: 13px;
+    font-size: 16px;
     color: var(--text-secondary);
     margin: 0;
     background: var(--surface);
-    padding: 6px 14px;
-    border-radius: var(--radius);
+    padding: 8px 18px;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border);
+    max-width: 50vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
   }
 
   .complete-stats {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     align-items: center;
-    font-size: 12px;
+    font-size: 15px;
     color: var(--text-secondary);
   }
 
@@ -2042,42 +2149,47 @@
 
   .complete-actions {
     display: flex;
-    gap: 12px;
-    margin-top: 8px;
+    gap: 24px;
+    width: 100%;
+    max-width: 50vw;
   }
 
   .btn-reveal-complete {
-    background: var(--success);
+    flex: 1;
+    background: var(--accent);
     color: white;
     border: none;
     font-family: var(--font);
-    font-size: 13px;
-    font-weight: 500;
-    padding: 8px 24px;
-    border-radius: var(--radius);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 0 24px;
+    height: 44px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
-    transition: filter var(--transition), transform var(--transition);
+    transition: background var(--transition);
   }
 
-  .btn-reveal-complete:hover { filter: brightness(1.1); }
-  .btn-reveal-complete:active { transform: scale(0.98); }
+  .btn-reveal-complete:hover {
+    background: color-mix(in srgb, var(--accent) 80%, white);
+  }
 
   .btn-another {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text);
+    flex: 1;
+    background: var(--accent);
+    color: white;
+    border: none;
     font-family: var(--font);
-    font-size: 13px;
-    font-weight: 500;
-    padding: 8px 24px;
-    border-radius: var(--radius);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 0 24px;
+    height: 44px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
-    transition: background var(--transition), border-color var(--transition);
+    transition: background var(--transition);
   }
 
   .btn-another:hover {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    background: color-mix(in srgb, var(--accent) 80%, white);
   }
 
   /* ── Spinner ──────────────────────────────────────────────────────── */
@@ -2163,7 +2275,7 @@
   .cover-art-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
   }
 
   .btn-remove-cover:focus-visible {

@@ -1,0 +1,131 @@
+<script>
+  import { slide } from "svelte/transition";
+  import Panel from "$lib/components/ui/Panel.svelte";
+  import FormField from "$lib/components/ui/FormField.svelte";
+  import FieldLabel from "$lib/components/ui/FieldLabel.svelte";
+  import SegmentedButtonGroup from "$lib/components/ui/SegmentedButtonGroup.svelte";
+  import Banner from "$lib/components/ui/Banner.svelte";
+  import { fileStore } from "$lib/stores/files.svelte.js";
+  import { settingsStore } from "$lib/stores/settings.svelte.js";
+  import { formatDurationHuman, estimateSize } from "$lib/services/format.js";
+
+  const LOSSY_CODECS = ["mp3", "wma"];
+  const MODE_OPTIONS = [
+    { value: "lossless", label: "Lossless" },
+    { value: "compress", label: "Compress" },
+  ];
+  const CHANNEL_OPTIONS = [
+    { value: false, label: "Stereo" },
+    { value: true, label: "Mono" },
+  ];
+
+  $effect(() => {
+    void settingsStore.bitrate, settingsStore.mono, settingsStore.qualityMode;
+    settingsStore.persistQuality();
+  });
+
+  const isLossless = $derived(settingsStore.qualityMode === "lossless");
+  const allAac = $derived(fileStore.items.length > 0 && fileStore.items.every(f => f.codec === "aac"));
+  const willOutputAlac = $derived(isLossless && !allAac);
+  const hasLossySource = $derived(fileStore.items.some(f => LOSSY_CODECS.includes(f.codec)));
+
+  function effectiveBps() {
+    if (isLossless) {
+      return fileStore.avgBitrate || settingsStore.bitrate * 1000;
+    }
+    const channels = settingsStore.mono ? 1 : 2;
+    return settingsStore.bitrate * 1000 * channels;
+  }
+</script>
+
+{#if fileStore.mergePlan}
+  <Panel title="Quality">
+    <div class="encoding-fields">
+      <div class="quality-row">
+        <FieldLabel>{#snippet children()}Mode{/snippet}</FieldLabel>
+        <SegmentedButtonGroup bind:value={settingsStore.qualityMode} options={MODE_OPTIONS} ariaLabel="Quality mode" />
+      </div>
+
+      {#if !isLossless}
+        <div class="quality-row" transition:slide={{ duration: 180 }}>
+          <FieldLabel>{#snippet children()}Channels{/snippet}</FieldLabel>
+          <SegmentedButtonGroup bind:value={settingsStore.mono} options={CHANNEL_OPTIONS} ariaLabel="Channels" />
+        </div>
+        <div class="quality-row" transition:slide={{ duration: 180 }}>
+          <FormField label="Bitrate per channel">
+            {#snippet children()}
+              <select class="u-input u-input--sm" bind:value={settingsStore.bitrate}>
+                <option value={64}>64 kbps</option>
+                <option value={96}>96 kbps</option>
+                <option value={128}>128 kbps</option>
+                <option value={192}>192 kbps</option>
+                <option value={256}>256 kbps</option>
+                <option value={320}>320 kbps</option>
+              </select>
+            {/snippet}
+          </FormField>
+        </div>
+      {/if}
+
+      {#if willOutputAlac && hasLossySource}
+        <div transition:slide={{ duration: 180 }}>
+          <Banner
+            variant="info"
+            dismissible={false}
+            message="Some files are already compressed (MP3/WMA). Storing them losslessly preserves current quality but produces a larger file."
+          />
+        </div>
+      {/if}
+
+      {#if willOutputAlac}
+        <div transition:slide={{ duration: 180 }}>
+          <Banner
+            variant="info"
+            dismissible={false}
+            message="ALAC M4B plays on Apple devices; some audiobook apps may not open it."
+          />
+        </div>
+      {/if}
+
+      <div class="quality-row">
+        <FieldLabel>{#snippet children()}Expected output{/snippet}</FieldLabel>
+        <div class="expected-output">
+          <span>{fileStore.count} file{fileStore.count !== 1 ? "s" : ""}</span>
+          <span class="expected-sep">&middot;</span>
+          <span>{formatDurationHuman(fileStore.totalDuration)}</span>
+          {#if !willOutputAlac}
+            <span class="expected-sep">&middot;</span>
+            <span>{estimateSize(fileStore.totalDuration, effectiveBps())}</span>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </Panel>
+{/if}
+
+<style>
+  .encoding-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+  }
+
+  .quality-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .expected-output {
+    font-size: var(--font-base);
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .expected-sep {
+    margin: 0 var(--space-2);
+    color: var(--text-secondary);
+    opacity: var(--opacity-faint);
+  }
+</style>

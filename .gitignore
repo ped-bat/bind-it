@@ -7,5 +7,6 @@ build/
 *.swp
 .env
 test-audiobooks/
+test-fixtures/
 *.m4b
 

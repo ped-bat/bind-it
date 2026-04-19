@@ -1,0 +1,22 @@
+- [X] Remove unecessary code
+- [X] Check build errors
+- [X] Open folder at the end not working
+- [X] Fix dock app icon
+- [X] Fields still have a lot of repeated css
+- [X] Fix icon used accross screens
+- [X] Add splash screen
+- [X] During process the description jumps between Transcoding and transcoded
+- [X] Fix progress bar shine animation - it's inconsistent rn
+- [X] Progress bar seems to do 20-60% on transcoding, 80 to concat 90 to metadata, but these last two are quick
+- [X] Remember preferences between sessions
+- [X] Fix lossless / compress UI
+- [X] Add support for all main audio formats including FLAC and WAV
+- [X] Stress test app
+- [ ] Add lottie animations
+- [ ] Test fresh installation on another mac
+- [ ] Test installation on windows
+- [ ] Test installation on linux
+- [ ] Figure out app publishing
+- [ ] Create landing page
+- [ ] Get domain
+- [ ] Publish website and app

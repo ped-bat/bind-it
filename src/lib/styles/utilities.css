@@ -1,0 +1,40 @@
+/* ── Utility classes ────────────────────────────────────────────────── */
+
+.u-focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Shared text-input / select control. */
+.u-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--font-base);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  outline: none;
+  min-width: 0;
+  height: var(--control-lg);
+  box-sizing: border-box;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.u-input--sm {
+  font-size: var(--font-md);
+  padding: 0 var(--space-4);
+  height: var(--control-md);
+}
+
+.u-input--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.u-input:hover { border-color: var(--accent-border-mix); }
+.u-input:focus,
+.u-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus-strong);
+}

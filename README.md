@@ -11,11 +11,9 @@ M4B audiobook with chapters, metadata, and cover art — ready for any player.
 - **Parallel transcoding** — MP3 and mixed-codec inputs are transcoded to AAC using all available CPU cores
 - **Automatic chapters** — chapter markers are created from each input file
 - **Metadata and cover art** — auto-detected from source files, fully editable before export
-- **Drag and drop** — add files by dropping them onto the window; reorder by dragging
+- **Drag and drop** — add files by dropping them onto the window with drag and drop to reorder chapters
 - **Folder support** — drop a folder to import all audio files inside it
 - **Configurable quality** — choose your output bitrate (64–320 kbps)
-- **Dark mode** — light and dark themes that follow system preference
-- **Accessible** — keyboard navigable with proper focus management
 - **Offline and private** — no uploads, no accounts, no tracking
 
 ## How It Works

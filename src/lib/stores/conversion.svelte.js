@@ -2,7 +2,8 @@ import { appStore } from "./app.svelte.js";
 import { fileStore } from "./files.svelte.js";
 import { metadataStore } from "./metadata.svelte.js";
 import { settingsStore } from "./settings.svelte.js";
-import { preflightCheck, mergeAudiobook, cancelMerge, revealInFolder } from "$lib/services/tauri.js";
+import { preflightCheck, mergeAudioFiles, cancelMerge, revealInFolder, confirmAsk } from "$lib/services/tauri.js";
+import { outputExtension } from "$lib/services/output.js";
 
 /**
  * Mirrors the Rust `Stage` enum (src-tauri/src/lib.rs).
@@ -58,7 +59,7 @@ class ConversionStore {
       sizeBytes: payload.size_bytes,
     };
     appStore.screen = "complete";
-    appStore.announce("Audiobook created successfully");
+    appStore.announce("Audio file created successfully");
   }
 
   /** @param {any} payload */
@@ -80,11 +81,38 @@ class ConversionStore {
     appStore.error = null;
     this.outputPath = null;
 
+    const fmt = settingsStore.outputFormat;
+    const hasMp3 = fileStore.items.some(f => f.codec === "mp3");
+
+    // The two "Original" formats keep the source codec, which carries known
+    // compatibility quirks with Apple players for MP3 sources. Make the user
+    // confirm before we kick off a long conversion they may have to redo.
+    if (fmt === "original" && hasMp3) {
+      const ok = await confirmAsk(
+        "Chapters added as ID3v2 chapters. This combination can have some issues in Apple Books app.",
+        { title: "Confirm output format", okLabel: "Bind anyway", cancelLabel: "Cancel" },
+      );
+      if (!ok) return;
+    } else if (fmt === "original-m4b" && hasMp3) {
+      const ok = await confirmAsk(
+        "This combination can have some issues in Apple Books app.",
+        { title: "Confirm output format", okLabel: "Bind anyway", cancelLabel: "Cancel" },
+      );
+      if (!ok) return;
+    } else if (fmt === "original" || fmt === "original-m4b") {
+      const ok = await confirmAsk(
+        `Output will preserve the source codec inside ${fmt === "original-m4b" ? "an M4B" : "the matching"} container. Continue?`,
+        { title: "Confirm output format", okLabel: "Bind", cancelLabel: "Cancel" },
+      );
+      if (!ok) return;
+    }
+
     try {
       const preflight = await preflightCheck({
         files: fileStore.items.map(f => f.path),
         outputDir: settingsStore.outputDir,
         outputFilename: settingsStore.outputFilename,
+        outputExtension: outputExtension(),
       });
       if (!preflight.ok) { appStore.error = preflight.errors.join("\n"); return; }
       if (preflight.warnings.length > 0) appStore.warning = preflight.warnings.join("\n");
@@ -100,16 +128,39 @@ class ConversionStore {
     this.#startTimer();
     appStore.announce("Conversion started");
 
-    const isLossless = settingsStore.qualityMode === "lossless";
-    const allAac = fileStore.items.length > 0 && fileStore.items.every(f => f.codec === "aac");
-    // Lossless + all AAC → remux via AAC pipeline (force_transcode=false lets it pick remux).
-    // Lossless + mixed → ALAC encode.
-    // Compress → AAC encode (force).
-    const output_codec = isLossless && !allAac ? "alac" : "aac";
-    const force_transcode = !isLossless;
+    // Map the user's format choice onto the backend's (output_codec,
+    // force_transcode, wrap_in_mp4) tuple.
+    //   original      → preserve source codec (remux when possible);
+    //                   wrap_in_mp4=false so MP3 sources land in .mp3
+    //   original-m4b  → preserve source codec but force MP4 container
+    //   aac           → re-encode to AAC, .m4b
+    //   alac          → encode to ALAC, .m4b
+    const NATIVE_M4B_CODECS = ["aac", "mp3", "alac"];
+    const firstCodec = fileStore.items[0]?.codec;
+    const allSameNative = fileStore.items.length > 0
+      && NATIVE_M4B_CODECS.includes(firstCodec)
+      && fileStore.items.every(f => f.codec === firstCodec);
+
+    let output_codec;
+    let force_transcode;
+    let wrap_in_mp4;
+    if (fmt === "aac") {
+      output_codec = "aac";
+      force_transcode = true;
+      wrap_in_mp4 = false;
+    } else if (fmt === "alac") {
+      output_codec = "alac";
+      force_transcode = false;
+      wrap_in_mp4 = false;
+    } else {
+      // "original" and "original-m4b" share the codec selection logic.
+      output_codec = allSameNative ? "aac" : "alac";
+      force_transcode = false;
+      wrap_in_mp4 = fmt === "original-m4b";
+    }
 
     try {
-      await mergeAudiobook({
+      await mergeAudioFiles({
         files: fileStore.items.map(f => ({ path: f.path, chapter_name: f.chapter_name })),
         output_dir: settingsStore.outputDir,
         output_filename: settingsStore.outputFilename,
@@ -123,6 +174,7 @@ class ConversionStore {
         mono: settingsStore.mono,
         force_transcode,
         output_codec,
+        wrap_in_mp4,
         durations: fileStore.items.map(f => f.duration),
       });
     } catch (e) {

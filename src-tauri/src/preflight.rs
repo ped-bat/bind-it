@@ -4,7 +4,12 @@ use std::fs;
 use std::path::Path;
 
 #[tauri::command]
-pub fn preflight_check(files: Vec<String>, output_dir: String, output_filename: Option<String>) -> PreflightResult {
+pub fn preflight_check(
+    files: Vec<String>,
+    output_dir: String,
+    output_filename: Option<String>,
+    output_extension: Option<String>,
+) -> PreflightResult {
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
 
@@ -33,7 +38,7 @@ pub fn preflight_check(files: Vec<String>, output_dir: String, output_filename: 
         }
     }
     if out.exists() {
-        let test_file = out.join(".bindery_write_test");
+        let test_file = out.join(".bind_it_write_test");
         match fs::File::create(&test_file) {
             Ok(_) => {
                 let _ = fs::remove_file(&test_file);
@@ -59,9 +64,10 @@ pub fn preflight_check(files: Vec<String>, output_dir: String, output_filename: 
     }
 
     if let Some(ref name) = output_filename {
-        let candidate = Path::new(&output_dir).join(format!("{}.m4b", name));
+        let ext = output_extension.as_deref().unwrap_or("m4b");
+        let candidate = Path::new(&output_dir).join(format!("{}.{}", name, ext));
         if candidate.exists() {
-            warnings.push(format!("{}.m4b already exists — a numbered suffix will be added.", name));
+            warnings.push(format!("{}.{} already exists — a numbered suffix will be added.", name, ext));
         }
     }
 

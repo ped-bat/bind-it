@@ -3,170 +3,73 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bindery — Bind your audiobooks into a single M4B</title>
-  <meta name="description" content="Native desktop app that merges audiobook chapter files (MP3, M4A, M4B) into one M4B with chapters, metadata, and cover art. Offline, private, zero setup.">
+  <title>Bind it — Bind your audio files into a single M4B</title>
+  <meta name="description" content="Native desktop app that merges audio file chapter files (MP3, M4A, M4B) into one M4B with chapters, metadata, and cover art. Offline, private, zero setup.">
   <meta name="theme-color" content="#FAFAF8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
 
-  <link rel="canonical" href="https://bindery.io/">
+  <link rel="canonical" href="https://bindit.app/">
   <link rel="icon" type="image/svg+xml" href="icons/logomark.svg">
   <link rel="apple-touch-icon" href="icons/logomark.svg">
 
-  <meta property="og:title" content="Bindery — Bind your audiobooks">
-  <meta property="og:description" content="Merge audiobook chapter files into a single M4B with chapters, metadata, and cover art.">
+  <meta property="og:title" content="Bind it — Bind your audio files">
+  <meta property="og:description" content="Merge audio file chapter files into a single M4B with chapters, metadata, and cover art.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://bindery.io/">
-  <meta property="og:image" content="https://bindery.io/icons/logomark.svg">
+  <meta property="og:url" content="https://bindit.app/">
+  <meta property="og:image" content="https://bindit.app/icons/logomark.svg">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Bindery — Bind your audiobooks">
-  <meta name="twitter:description" content="Merge audiobook chapter files into a single M4B. Offline, private, zero setup.">
-  <meta name="twitter:image" content="https://bindery.io/icons/logomark.svg">
+  <meta name="twitter:title" content="Bind it — Bind your audio files">
+  <meta name="twitter:description" content="Merge audio file chapter files into a single M4B. Offline, private, zero setup.">
+  <meta name="twitter:image" content="https://bindit.app/icons/logomark.svg">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 
+  <link rel="stylesheet" href="vendor/animate.min.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
   <a class="skip-link" href="#main">Skip to content</a>
 
-  <!-- ───────────── Icon sprite ───────────── -->
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-    <defs>
-      <!-- Brand glyphs (filled) -->
-      <symbol id="i-apple" viewBox="0 0 24 24">
-        <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
-      </symbol>
-      <symbol id="i-windows" viewBox="0 0 24 24">
-        <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
-      </symbol>
-      <symbol id="i-linux" viewBox="0 0 24 24">
-        <path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489.117.795.495 1.556 1.194 2.146l.041.034c.172.138.35.249.525.34-.1.129-.185.265-.256.405-.2.394-.226.822-.24 1.253-.013.425-.021.87-.173 1.38-.252.798-.44 1.496-.358 2.032.08.528.444.85.87 1.04.427.19.927.27 1.43.27 1.004 0 2.055-.32 2.915-.64.856-.32 1.56-.625 2.15-.625.636-.008 1.228.28 2.035.57.808.29 1.78.58 2.765.58.502 0 1.007-.08 1.434-.27.428-.19.792-.512.872-1.04.081-.536-.107-1.234-.358-2.032-.153-.51-.16-.955-.173-1.38-.014-.43-.04-.86-.24-1.253a1.628 1.628 0 0 0-.257-.405c.175-.091.353-.202.526-.34l.041-.034c.699-.59 1.077-1.351 1.194-2.146.123-.805-.009-1.657-.287-2.489-.589-1.771-1.831-3.47-2.716-4.52-.75-1.068-.974-1.929-1.05-3.021-.065-1.49 1.056-5.965-3.17-6.298A6.143 6.143 0 0 0 12.504 0z"/>
-      </symbol>
-      <symbol id="i-github" viewBox="0 0 24 24">
-        <path d="M12 .5C5.37.5 0 5.78 0 12.292c0 5.211 3.438 9.63 8.205 11.188.6.111.82-.254.82-.567 0-.28-.01-1.022-.015-2.005-3.338.711-4.042-1.582-4.042-1.582-.546-1.361-1.335-1.725-1.335-1.725-1.087-.731.084-.716.084-.716 1.205.082 1.838 1.215 1.838 1.215 1.07 1.803 2.809 1.282 3.495.981.108-.763.417-1.282.76-1.577-2.665-.295-5.466-1.309-5.466-5.827 0-1.287.465-2.339 1.235-3.164-.135-.298-.54-1.497.105-3.121 0 0 1.005-.316 3.3 1.209.96-.262 1.98-.392 3-.398 1.02.006 2.04.136 3 .398 2.28-1.525 3.285-1.209 3.285-1.209.645 1.624.24 2.823.12 3.121.765.825 1.23 1.877 1.23 3.164 0 4.53-2.805 5.527-5.475 5.817.42.354.81 1.077.81 2.182 0 1.578-.015 2.846-.015 3.229 0 .309.21.678.825.561C20.565 21.917 24 17.495 24 12.292 24 5.78 18.627.5 12 .5z"/>
-      </symbol>
-
-      <!-- Logomark (uses currentColor, two-path from source) -->
-      <symbol id="i-logo" viewBox="0 0 1172 858">
-        <path fill="currentColor" d="M1171.96 655.745V789.672C1171.96 827.113 1141.61 857.472 1104.16 857.472C1066.72 857.472 1036.36 827.113 1036.36 789.672V698.733V591.042C1036.36 553.6 1006 523.241 968.562 523.241C931.121 523.241 900.762 553.6 900.762 591.042V698.733C900.762 736.175 870.402 766.534 832.961 766.534C795.519 766.534 765.16 736.175 765.16 698.733V181.318C765.16 143.877 795.519 113.517 832.961 113.517C870.402 113.517 900.762 143.864 900.762 181.305V253.294C900.762 290.736 931.121 321.095 968.562 321.095C1006 321.095 1036.36 290.736 1036.36 253.294V181.305V67.8007C1036.36 30.3593 1066.72 0 1104.16 0C1141.61 0 1171.96 30.3593 1171.96 67.8007V655.733Z"/>
-        <path fill="currentColor" d="M0 655.745V789.672C0 827.113 30.3593 857.472 67.8007 857.472C105.242 857.472 135.602 827.113 135.602 789.672V698.733V591.042C135.602 553.6 165.961 523.241 203.402 523.241C240.844 523.241 271.203 553.6 271.203 591.042V698.733C271.203 736.175 301.562 766.534 339.004 766.534C376.445 766.534 406.805 736.175 406.805 698.733V181.318C406.805 143.877 376.445 113.517 339.004 113.517C301.562 113.517 271.203 143.864 271.203 181.305V253.294C271.203 290.736 240.844 321.095 203.402 321.095C165.961 321.095 135.602 290.736 135.602 253.294V181.305V67.8134C135.602 30.372 105.242 .0127 67.8007 .0127C30.3593 .0127 0 30.372 0 67.8134V655.745Z"/>
-        <path fill="currentColor" d="M629.688 428.736C629.688 437.227 636.122 444.258 644.55 445.172C712.389 452.572 765.175 510.054 765.175 579.86V277.6C765.175 347.406 712.389 404.888 644.55 412.287C636.11 413.214 629.688 420.245 629.688 428.723Z"/>
-        <path fill="currentColor" d="M542.276 428.736C542.276 420.245 535.841 413.214 527.414 412.3C459.575 404.9 406.789 347.418 406.789 277.612V579.872C406.789 510.066 459.575 452.584 527.414 445.185C535.854 444.258 542.276 437.227 542.276 428.749Z"/>
-      </symbol>
-
-      <!-- UI glyphs (stroke) -->
-      <symbol id="i-download" viewBox="0 0 24 24">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/>
-        <line x1="12" y1="15" x2="12" y2="3"/>
-      </symbol>
-      <symbol id="i-arrow-right" viewBox="0 0 24 24">
-        <path d="M5 12h14"/>
-        <path d="m12 5 7 7-7 7"/>
-      </symbol>
-      <symbol id="i-zap" viewBox="0 0 24 24">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-      </symbol>
-      <symbol id="i-cpu" viewBox="0 0 24 24">
-        <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
-        <rect x="9" y="9" width="6" height="6"/>
-        <line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/>
-        <line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/>
-        <line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/>
-        <line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-      </symbol>
-      <symbol id="i-bookmark" viewBox="0 0 24 24">
-        <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-      </symbol>
-      <symbol id="i-pointer" viewBox="0 0 24 24">
-        <path d="m13 13 6 6"/>
-        <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51z"/>
-      </symbol>
-      <symbol id="i-shield" viewBox="0 0 24 24">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-      </symbol>
-      <symbol id="i-package" viewBox="0 0 24 24">
-        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-        <line x1="12" y1="22.08" x2="12" y2="12"/>
-      </symbol>
-      <symbol id="i-bug" viewBox="0 0 24 24">
-        <rect x="8" y="6" width="8" height="14" rx="4"/>
-        <path d="M12 2v4"/>
-        <path d="M8 6 6 4"/>
-        <path d="m16 6 2-2"/>
-        <path d="M6 13H3"/>
-        <path d="M21 13h-3"/>
-        <path d="m5 20 3-2"/>
-        <path d="m19 20-3-2"/>
-      </symbol>
-      <symbol id="i-send" viewBox="0 0 24 24">
-        <path d="m22 2-7 20-4-9-9-4z"/>
-        <path d="M22 2 11 13"/>
-      </symbol>
-    </defs>
-  </svg>
-
-  <!-- ───────────── Nav ───────────── -->
-  <header class="nav" role="banner">
-    <div class="nav-inner">
-      <a class="nav-brand" href="#top" aria-label="Bindery home">
-        <svg aria-hidden="true"><use href="#i-logo"/></svg>
-        <span>Bindery</span>
-      </a>
-      <nav class="nav-links" aria-label="Primary">
-        <a href="#features">Features</a>
-        <a href="#how">How it works</a>
-        <a href="#faq">FAQ</a>
-        <a href="https://github.com/janxpetrov/bindery" rel="noopener">GitHub</a>
-      </nav>
-      <a class="nav-cta" href="#download">
-        <svg aria-hidden="true"><use href="#i-download"/></svg>
-        Download
-      </a>
-    </div>
-  </header>
-
   <main id="main">
 
-    <!-- ───────────── Hero ───────────── -->
+    <!-- Hero -->
     <section class="hero" id="top" aria-labelledby="hero-heading">
-      <span class="hero-badge" aria-label="Version 0.1.0, now available">
-        <span class="dot" aria-hidden="true"></span>
+      <span class="pill reveal-load" data-reveal-delay="0" aria-label="Version 0.1.0, now available">
+        <span class="pill-dot" aria-hidden="true"></span>
         Version 0.1.0 · Now available
       </span>
 
-      <svg class="hero-logo" role="img" aria-label="Bindery logomark"><use href="#i-logo"/></svg>
+      <div class="hero-logo reveal-load" data-reveal-delay="50" id="hero-logo" role="img" aria-label="Bind it logomark">
+        <svg class="hero-logo-fallback" aria-hidden="true"><use href="icons/sprite.svg#i-logo"/></svg>
+      </div>
 
-      <h1 class="hero-title" id="hero-heading">Bindery</h1>
+      <h1 class="hero-title reveal-load" data-reveal-delay="100" id="hero-heading">Bind it</h1>
 
-      <p class="hero-description">
-        Merge audiobook chapters into one M4B. <strong>Chapters, metadata, cover art — all baked in.</strong> Native. Offline. Instant.
+      <p class="hero-lede reveal-load" data-reveal-delay="150">
+        Merge audio file chapters into one M4B. <strong>Chapters, metadata, cover art — all baked in.</strong> Native. Offline. Instant.
       </p>
 
-      <div class="download">
-        <a href="#download" class="download-primary" id="primary-download" data-os="macos" aria-label="Download Bindery">
-          <svg id="primary-download-icon" class="icon--brand" aria-hidden="true"><use href="#i-apple"/></svg>
+      <div class="download reveal-load" data-reveal-delay="200">
+        <a href="#download" class="btn btn-primary" id="primary-download" data-os="macos" aria-label="Download Bind it">
+          <svg class="icon-brand" id="primary-download-icon" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
           <span id="primary-download-label">Download for macOS</span>
         </a>
 
         <div class="download-alt" id="download-alt" aria-label="Other platforms">
           <span class="alt-label">Also for</span>
           <a href="#download" data-os="macos">
-            <svg class="icon--brand" aria-hidden="true"><use href="#i-apple"/></svg>
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
             macOS
           </a>
-          <span class="sep" aria-hidden="true">·</span>
           <a href="#download" data-os="windows">
-            <svg class="icon--brand" aria-hidden="true"><use href="#i-windows"/></svg>
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
             Windows
           </a>
-          <span class="sep" aria-hidden="true">·</span>
           <a href="#download" data-os="linux">
-            <svg class="icon--brand" aria-hidden="true"><use href="#i-linux"/></svg>
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
             Linux
           </a>
         </div>
@@ -174,204 +77,187 @@
         <span class="download-meta" id="download-meta">Apple Silicon · Free · Zero setup</span>
       </div>
 
-      <div class="hero-shot fade-in" aria-hidden="true">
-        <div class="hero-shot-frame">
-          <img src="icons/image-placeholder.svg" alt="" loading="lazy" width="860" height="538">
-        </div>
-      </div>
+      <figure class="hero-shot" aria-hidden="true">
+        <img class="reveal-load" data-reveal-delay="250" src="icons/image-placeholder.svg" alt="" loading="lazy" width="860" height="538">
+      </figure>
     </section>
 
-    <!-- ───────────── Features ───────────── -->
+    <!-- Features -->
     <section id="features" aria-labelledby="features-heading">
-      <div class="container">
-        <div class="section-head">
-          <div class="eyebrow center section-eyebrow fade-in">Features</div>
-          <h2 id="features-heading" class="section-title fade-in">Built <span class="display-em">for audiobooks</span>.</h2>
-          <p class="section-sub fade-in">Bindery picks the fastest path. Remux when it can. Transcode only when it must.</p>
-        </div>
+      <header class="section-head">
+        <p class="eyebrow reveal">Features</p>
+        <h2 class="section-title reveal" id="features-heading">Built <em>for audio files</em>.</h2>
+        <p class="section-lede reveal">Bind it picks the fastest path. Remux when it can. Transcode only when it must.</p>
+      </header>
 
-        <div class="features-grid">
-          <article class="feature-card fade-in">
-            <span class="feature-icon"><svg aria-hidden="true"><use href="#i-package"/></svg></span>
-            <h3>Zero setup</h3>
-            <p>ffmpeg bundled in. Download, open, bind. Nothing else to install.</p>
-          </article>
-          <article class="feature-card fade-in">
-            <span class="feature-icon"><svg aria-hidden="true"><use href="#i-zap"/></svg></span>
-            <h3>Lossless remux</h3>
-            <p>AAC files join directly, with no re-encoding. Near-instant. Bit-perfect.</p>
-          </article>
-          <article class="feature-card fade-in">
-            <span class="feature-icon"><svg aria-hidden="true"><use href="#i-cpu"/></svg></span>
-            <h3>Parallel transcoding</h3>
-            <p>MP3s convert to AAC across every CPU core. Hours of audio in minutes.</p>
-          </article>
-          <article class="feature-card fade-in">
-            <span class="feature-icon"><svg aria-hidden="true"><use href="#i-bookmark"/></svg></span>
-            <h3>Chapters &amp; metadata</h3>
-            <p>Title, author, cover art — auto-detected, fully editable. Chapters made from filenames.</p>
-          </article>
-          <article class="feature-card fade-in">
-            <span class="feature-icon"><svg aria-hidden="true"><use href="#i-pointer"/></svg></span>
-            <h3>Drag &amp; drop</h3>
-            <p>Drop files or a folder. Drag to reorder. Bitrate from 64 to 320 kbps.</p>
-          </article>
-          <article class="feature-card fade-in">
-            <span class="feature-icon"><svg aria-hidden="true"><use href="#i-shield"/></svg></span>
-            <h3>Offline &amp; private</h3>
-            <p>No uploads. No accounts. No tracking. Your files stay on your machine.</p>
-          </article>
-        </div>
-      </div>
+      <ul class="grid grid-features">
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-package"/></svg>
+          <h3>Zero setup</h3>
+          <p>ffmpeg bundled in. Download, open, bind. Nothing else to install.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-zap"/></svg>
+          <h3>Lossless remux</h3>
+          <p>AAC files join directly, with no re-encoding. Near-instant. Bit-perfect.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-cpu"/></svg>
+          <h3>Parallel transcoding</h3>
+          <p>MP3s convert to AAC across every CPU core. Hours of audio in minutes.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-bookmark"/></svg>
+          <h3>Chapters &amp; metadata</h3>
+          <p>Title, author, cover art — auto-detected, fully editable. Chapters made from filenames.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-pointer"/></svg>
+          <h3>Drag &amp; drop</h3>
+          <p>Drop files or a folder. Drag to reorder. Bitrate from 64 to 320 kbps.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-shield"/></svg>
+          <h3>Offline &amp; private</h3>
+          <p>No uploads. No accounts. No tracking. Your files stay on your machine.</p>
+        </li>
+      </ul>
     </section>
 
-    <!-- ───────────── How it works ───────────── -->
+    <!-- How -->
     <section id="how" aria-labelledby="how-heading">
-      <div class="container">
-        <div class="section-head">
-          <div class="eyebrow center section-eyebrow fade-in">Workflow</div>
-          <h2 id="how-heading" class="section-title fade-in">Three steps. <span class="display-em">One M4B.</span></h2>
-          <p class="section-sub fade-in">From folder to finished audiobook in under a minute.</p>
-        </div>
-        <div class="how-wrap fade-in">
-          <ol class="steps">
-            <li class="step">
-              <div class="step-number" aria-hidden="true">1</div>
-              <h3>Drop</h3>
-              <p>Drag your chapter files onto Bindery.</p>
-            </li>
-            <li class="step-arrow" aria-hidden="true">
-              <svg><use href="#i-arrow-right"/></svg>
-            </li>
-            <li class="step">
-              <div class="step-number" aria-hidden="true">2</div>
-              <h3>Review</h3>
-              <p>Reorder, edit metadata, pick a bitrate.</p>
-            </li>
-            <li class="step-arrow" aria-hidden="true">
-              <svg><use href="#i-arrow-right"/></svg>
-            </li>
-            <li class="step">
-              <div class="step-number" aria-hidden="true">3</div>
-              <h3>Bind</h3>
-              <p>One click. Out comes your M4B.</p>
-            </li>
-          </ol>
-        </div>
+      <header class="section-head">
+        <p class="eyebrow reveal">Workflow</p>
+        <h2 class="section-title reveal" id="how-heading">Three steps. <em>One M4B.</em></h2>
+        <p class="section-lede reveal">From folder to finished audio file in under a minute.</p>
+      </header>
+
+      <ol class="steps reveal">
+        <li class="step">
+          <span class="step-number" aria-hidden="true">1</span>
+          <h3>Drop</h3>
+          <p>Drag your chapter files onto Bind it.</p>
+        </li>
+        <li class="step">
+          <span class="step-number" aria-hidden="true">2</span>
+          <h3>Review</h3>
+          <p>Reorder, edit metadata, pick a bitrate.</p>
+        </li>
+        <li class="step">
+          <span class="step-number" aria-hidden="true">3</span>
+          <h3>Bind</h3>
+          <p>One click. Out comes your M4B.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" aria-labelledby="faq-heading">
+      <header class="section-head">
+        <p class="eyebrow reveal">FAQ</p>
+        <h2 class="section-title reveal" id="faq-heading">Common <em>questions</em>.</h2>
+      </header>
+
+      <div class="faq">
+        <details class="reveal">
+          <summary>Which file formats does Bind it accept?</summary>
+          <p>MP3, M4A and M4B inputs. Output is always a single M4B with chapter markers, cover art and metadata.</p>
+        </details>
+        <details class="reveal">
+          <summary>Does Bind it work offline?</summary>
+          <p>Yes. Everything runs locally. No account, no uploads, no network calls during binding.</p>
+        </details>
+        <details class="reveal">
+          <summary>Are Intel Macs supported?</summary>
+          <p>The macOS build is universal — Apple Silicon and Intel are both covered.</p>
+        </details>
+        <details class="reveal">
+          <summary>Does it handle DRM-protected audio files?</summary>
+          <p>No. Bind it only processes unprotected audio files that you own.</p>
+        </details>
+        <details class="reveal">
+          <summary>How are chapters detected?</summary>
+          <p>Chapter titles come from filenames by default. You can edit names, order and durations in the review step before binding.</p>
+        </details>
+        <details class="reveal">
+          <summary>Where does the output file go?</summary>
+          <p>You pick the destination when you bind. Bind it never touches the source files.</p>
+        </details>
       </div>
     </section>
 
-    <!-- ───────────── FAQ ───────────── -->
-    <section id="faq" class="faq" aria-labelledby="faq-heading">
-      <div class="container">
-        <div class="section-head">
-          <div class="eyebrow center section-eyebrow fade-in">FAQ</div>
-          <h2 id="faq-heading" class="section-title fade-in">Common <span class="display-em">questions</span>.</h2>
-        </div>
-        <div class="faq-list">
-          <details class="fade-in">
-            <summary>Which file formats does Bindery accept?</summary>
-            <div class="faq-body">MP3, M4A and M4B inputs. Output is always a single M4B with chapter markers, cover art and metadata.</div>
-          </details>
-          <details class="fade-in">
-            <summary>Does Bindery work offline?</summary>
-            <div class="faq-body">Yes. Everything runs locally. No account, no uploads, no network calls during binding.</div>
-          </details>
-          <details class="fade-in">
-            <summary>Are Intel Macs supported?</summary>
-            <div class="faq-body">The macOS build is universal — Apple Silicon and Intel are both covered.</div>
-          </details>
-          <details class="fade-in">
-            <summary>Does it handle DRM-protected audiobooks?</summary>
-            <div class="faq-body">No. Bindery only processes unprotected audio files that you own.</div>
-          </details>
-          <details class="fade-in">
-            <summary>How are chapters detected?</summary>
-            <div class="faq-body">Chapter titles come from filenames by default. You can edit names, order and durations in the review step before binding.</div>
-          </details>
-          <details class="fade-in">
-            <summary>Where does the output file go?</summary>
-            <div class="faq-body">You pick the destination when you bind. Bindery never touches the source files.</div>
-          </details>
-        </div>
-      </div>
+    <!-- Download -->
+    <section id="download" class="section-alt" aria-labelledby="download-heading">
+      <header class="section-head">
+        <p class="eyebrow reveal">Download</p>
+        <h2 class="section-title reveal" id="download-heading">Get <em>Bind it</em>.</h2>
+        <p class="section-lede reveal">Free. MIT-licensed. Grab the build for your platform.</p>
+      </header>
+
+      <ul class="grid grid-download">
+        <li>
+          <a class="card card-link reveal" href="https://github.com/janxpetrov/bind-it/releases/latest" rel="noopener">
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
+            <span>
+              <span class="card-title">macOS</span>
+              <span class="card-sub">Universal · .dmg</span>
+            </span>
+          </a>
+        </li>
+        <li>
+          <a class="card card-link reveal" href="https://github.com/janxpetrov/bind-it/releases/latest" rel="noopener">
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
+            <span>
+              <span class="card-title">Windows</span>
+              <span class="card-sub">x64 · .msi</span>
+            </span>
+          </a>
+        </li>
+        <li>
+          <a class="card card-link reveal" href="https://github.com/janxpetrov/bind-it/releases/latest" rel="noopener">
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
+            <span>
+              <span class="card-title">Linux</span>
+              <span class="card-sub">x86_64 · AppImage</span>
+            </span>
+          </a>
+        </li>
+      </ul>
     </section>
 
-    <!-- ───────────── Download ───────────── -->
-    <section id="download" class="dl-section" aria-labelledby="dl-heading">
-      <div class="container">
-        <div class="section-head">
-          <div class="eyebrow center section-eyebrow fade-in">Download</div>
-          <h2 id="dl-heading" class="section-title fade-in">Get <span class="display-em">Bindery</span>.</h2>
-          <p class="section-sub fade-in">Free. MIT-licensed. Grab the build for your platform.</p>
-        </div>
-
-        <div class="dl-grid">
-          <a class="dl-card fade-in" href="https://github.com/janxpetrov/bindery/releases/latest" rel="noopener">
-            <svg class="icon--brand" aria-hidden="true"><use href="#i-apple"/></svg>
-            <div>
-              <div class="dl-os">macOS</div>
-              <div class="dl-arch">Universal · .dmg</div>
-            </div>
-          </a>
-          <a class="dl-card fade-in" href="https://github.com/janxpetrov/bindery/releases/latest" rel="noopener">
-            <svg class="icon--brand" aria-hidden="true"><use href="#i-windows"/></svg>
-            <div>
-              <div class="dl-os">Windows</div>
-              <div class="dl-arch">x64 · .msi</div>
-            </div>
-          </a>
-          <a class="dl-card fade-in" href="https://github.com/janxpetrov/bindery/releases/latest" rel="noopener">
-            <svg class="icon--brand" aria-hidden="true"><use href="#i-linux"/></svg>
-            <div>
-              <div class="dl-os">Linux</div>
-              <div class="dl-arch">x86_64 · AppImage</div>
-            </div>
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <!-- ───────────── Feedback ───────────── -->
-    <section class="bug-cta" id="report" aria-labelledby="bug-heading">
-      <div class="bug-inner">
-        <div class="bug-mark fade-in" aria-hidden="true">
-          <svg><use href="#i-bug"/></svg>
-        </div>
-        <div class="eyebrow center section-eyebrow fade-in">Feedback</div>
-        <h2 id="bug-heading" class="bug-title fade-in">Found a <span class="display-em">bug</span>?</h2>
-        <p class="bug-description fade-in">Open an issue on GitHub, or drop us an email.</p>
-        <a href="https://github.com/janxpetrov/bindery/issues/new" class="bug-btn fade-in" rel="noopener">
-          <svg aria-hidden="true"><use href="#i-github"/></svg>
-          Open an issue
+    <!-- Feedback -->
+    <section id="report" class="feedback" aria-labelledby="feedback-heading">
+      <p class="eyebrow reveal">Feedback</p>
+      <h2 class="section-title reveal" id="feedback-heading">Found a <em>bug</em>?</h2>
+      <p class="section-lede reveal">Open an issue on GitHub, or drop us an email.</p>
+      <a class="btn btn-primary reveal" href="https://github.com/janxpetrov/bind-it/issues/new" rel="noopener">
+        <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-github"/></svg>
+        Open an issue
+      </a>
+      <p class="feedback-mail reveal">
+        <a href="mailto:hello@bindit.app?subject=Bind it%20bug%20report">
+          <svg aria-hidden="true"><use href="icons/sprite.svg#i-send"/></svg>
+          hello@bindit.app
         </a>
-        <div class="bug-links fade-in">
-          <a href="mailto:hello@bindery.io?subject=Bindery%20bug%20report">
-            <svg aria-hidden="true"><use href="#i-send"/></svg>
-            hello@bindery.io
-          </a>
-        </div>
-      </div>
+      </p>
     </section>
 
   </main>
 
-  <!-- ───────────── Footer ───────────── -->
+  <!-- Footer -->
   <footer>
-    <div class="footer-inner">
-      <div class="footer-links">
-        <a href="https://github.com/janxpetrov/bindery" rel="noopener">GitHub</a>
-        <a href="https://github.com/janxpetrov/bindery/releases" rel="noopener">Releases</a>
-        <a href="https://github.com/janxpetrov/bindery/blob/main/LICENSE" rel="noopener">MIT License</a>
-        <a href="mailto:hello@bindery.io">Contact</a>
-      </div>
-      <span class="footer-meta">© <span id="year">2026</span> Bindery · v0.1.0</span>
-    </div>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://github.com/janxpetrov/bind-it" rel="noopener">GitHub</a>
+      <a href="https://github.com/janxpetrov/bind-it/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/janxpetrov/bind-it/blob/main/LICENSE" rel="noopener">MIT License</a>
+      <a href="mailto:hello@bindit.app">Contact</a>
+    </nav>
+    <p>© <span id="year">2026</span> Bind it · v0.1.0 · Created by Pedro</p>
   </footer>
 
-  <script>
-    document.getElementById('year').textContent = new Date().getFullYear();
-  </script>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+  <script src="vendor/lottie_light.min.js" defer></script>
+  <script src="animations/intro.js" defer></script>
   <script src="main.js" defer></script>
 </body>
 </html>

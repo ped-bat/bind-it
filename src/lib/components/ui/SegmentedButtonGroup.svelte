@@ -7,15 +7,16 @@
   /**
    * @type {{
    *   value: any,
-   *   options: { value: any, label: string }[],
+   *   options: { value: any, label: string, disabled?: boolean }[],
    *   ariaLabel?: string,
    *   onchange?: (v: any) => void,
    * }}
    */
   let { value = $bindable(), options, ariaLabel, onchange } = $props();
 
-  /** @param {any} v */
-  function pick(v) {
+  /** @param {any} v @param {boolean | undefined} disabled */
+  function pick(v, disabled) {
+    if (disabled) return;
     value = v;
     onchange?.(v);
   }
@@ -28,7 +29,8 @@
       class="segmented-btn"
       class:active={value === opt.value}
       aria-pressed={value === opt.value}
-      onclick={() => pick(opt.value)}
+      disabled={opt.disabled}
+      onclick={() => pick(opt.value, opt.disabled)}
     >{opt.label}</button>
   {/each}
 </div>
@@ -65,4 +67,9 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
+  .segmented-btn:disabled {
+    cursor: not-allowed;
+    opacity: var(--opacity-faint);
+  }
+  .segmented-btn:disabled:hover { color: var(--text-secondary); }
 </style>

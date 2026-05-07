@@ -36,7 +36,7 @@ pub fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
     }
 
     let tmp = match tempfile::Builder::new()
-        .prefix("bindery_cover_")
+        .prefix("bind_it_cover_")
         .suffix(".jpg")
         .tempfile()
     {

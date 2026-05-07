@@ -10,10 +10,14 @@
   import { fileStore } from "$lib/stores/files.svelte.js";
   import { appStore } from "$lib/stores/app.svelte.js";
   import { conversionStore } from "$lib/stores/conversion.svelte.js";
+  import { confirmAsk } from "$lib/services/tauri.js";
 
-  function handleCancel() {
+  async function handleCancel() {
     if (fileStore.count > 0) {
-      const ok = confirm(`Discard ${fileStore.count} chapter${fileStore.count !== 1 ? "s" : ""} and metadata?`);
+      const ok = await confirmAsk(
+        `Discard ${fileStore.count} chapter${fileStore.count !== 1 ? "s" : ""} and metadata?`,
+        { title: "Discard changes", okLabel: "Discard", cancelLabel: "Keep" },
+      );
       if (!ok) return;
     }
     appStore.clearAll();

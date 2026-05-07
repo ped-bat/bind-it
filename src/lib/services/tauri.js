@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 
 // ── Tauri invoke wrappers ───────────────────────────────────────────────────
 
@@ -17,9 +17,9 @@ export const getCoverArt = (paths) => invoke("get_cover_art", { paths });
 /** @param {string} path */
 export const setCustomCoverArt = (path) => invoke("set_custom_cover_art", { path });
 /** @param {any} config */
-export const mergeAudiobook = (config) => invoke("merge_audiobook", { config });
+export const mergeAudioFiles = (config) => invoke("merge_audio_files", { config });
 export const cancelMerge = () => invoke("cancel_merge");
-/** @param {{ files: string[], outputDir: string, outputFilename: string }} args */
+/** @param {{ files: string[], outputDir: string, outputFilename: string, outputExtension?: string }} args */
 export const preflightCheck = (args) => invoke("preflight_check", args);
 
 export async function revealInFolder(/** @type {string} */ path) {
@@ -44,9 +44,25 @@ export async function browseFiles() {
   return items.map(toPath);
 }
 
-export async function browseFolder() {
-  const selected = await open({ directory: true });
+/** @param {string} [defaultPath] */
+export async function browseFolder(defaultPath) {
+  const selected = await open({ directory: true, defaultPath: defaultPath || undefined });
   return selected ? toPath(selected) : null;
+}
+
+/**
+ * Native async confirm. `window.confirm` is non-blocking in Tauri's webview,
+ * so callers must await this instead.
+ * @param {string} message
+ * @param {{ title?: string, kind?: "info" | "warning" | "error", okLabel?: string, cancelLabel?: string }} [opts]
+ */
+export async function confirmAsk(message, opts = {}) {
+  return await ask(message, {
+    title: opts.title,
+    kind: opts.kind ?? "warning",
+    okLabel: opts.okLabel,
+    cancelLabel: opts.cancelLabel,
+  });
 }
 
 export async function browseImage() {

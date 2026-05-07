@@ -1,7 +1,7 @@
 {
-  "name": "bindery",
+  "name": "bind-it",
   "version": "0.1.0",
-  "description": "Desktop app for merging audiobook chapter files into a single M4B with chapters, metadata, and cover art",
+  "description": "Desktop app for merging audio files into a single M4B with chapters, metadata, and cover art",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -15,7 +15,8 @@
     "@fontsource/inter": "^5.2.8",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "lottie-web": "^5.13.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.6",

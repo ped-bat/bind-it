@@ -5,6 +5,18 @@ use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// aac_at (AudioToolbox) rejects bitrates above roughly 3.5 bits per sample
+/// per channel, with a practical ceiling of 320 kbps. Clamp the requested
+/// bitrate so the encoder can always open, regardless of SR/channel combo.
+fn clamp_aac_bitrate(bitrate: &str, sample_rate: u32, channels: u32) -> String {
+    let Ok(kbps) = bitrate.trim_end_matches('k').parse::<u32>() else {
+        return bitrate.to_string();
+    };
+    let ceiling = ((sample_rate as u64 * channels as u64 * 7) / 2_000) as u32;
+    let max_kbps = ceiling.min(320).max(32);
+    format!("{}k", kbps.min(max_kbps))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn transcode_parallel<F>(
     items: &[(usize, String)],
@@ -46,8 +58,32 @@ where
                 }
 
                 let file_duration = durations.get(*idx).copied().unwrap_or(0.0);
-                let temp_aac = tmp_dir.join(format!("part_{:04}.m4a", idx));
-                let temp_str = path_str(&temp_aac)?.to_string();
+                let is_aac = matches!(codec, "aac" | "aac_at" | "libfdk_aac");
+                let is_mp3 = codec == "libmp3lame";
+                let ext = if is_mp3 { "mp3" } else { "m4a" };
+                let temp_out = tmp_dir.join(format!("part_{:04}.{}", idx, ext));
+                let temp_str = path_str(&temp_out)?.to_string();
+
+                // aac_at caps bitrate by (sample_rate × channels). 22 kHz sources
+                // paired with typical voice-content bitrates fail to open the encoder.
+                // Upsample to 44.1 kHz minimum when encoding to AAC.
+                let effective_sr = match (is_aac, sample_rate) {
+                    (true, Some(sr)) if sr < 44_100 => Some(44_100),
+                    (true, None) => Some(44_100),
+                    (_, sr) => sr,
+                };
+
+                let effective_ch: u32 = match channels {
+                    Some("1") => 1,
+                    Some("2") => 2,
+                    _ => 2,
+                };
+
+                let encode_bitrate = if is_aac {
+                    clamp_aac_bitrate(bitrate, effective_sr.unwrap_or(44_100), effective_ch)
+                } else {
+                    bitrate.to_string()
+                };
 
                 let mut args = vec![
                     "-y".to_string(),
@@ -56,10 +92,9 @@ where
                     "-c:a".to_string(), codec.to_string(),
                 ];
 
-                let is_aac = matches!(codec, "aac" | "aac_at" | "libfdk_aac");
                 if is_aac {
                     args.push("-b:a".to_string());
-                    args.push(bitrate.to_string());
+                    args.push(encode_bitrate);
                     match codec {
                         "aac_at" => {
                             // Constrained VBR — bitrate-targeted but varies per frame.
@@ -75,6 +110,10 @@ where
                         }
                         _ => {}
                     }
+                } else if is_mp3 {
+                    // VBR quality 0 ≈ 245 kbps, transparent for spoken-word content.
+                    args.push("-q:a".to_string());
+                    args.push("0".to_string());
                 }
 
                 if let Some(ch) = channels {
@@ -86,7 +125,7 @@ where
                 args.push("0".to_string());
                 args.push("-vn".to_string());
 
-                if let Some(sr) = sample_rate {
+                if let Some(sr) = effective_sr {
                     args.push("-ar".to_string());
                     args.push(sr.to_string());
                 }
@@ -138,12 +177,15 @@ where
                             }
                             if last_emit.elapsed().as_millis() > 500 {
                                 last_emit = std::time::Instant::now();
-                                let temp_aac_path = tmp_dir.join(format!("part_{:04}.m4a", idx));
-                                if let Ok(meta) = std::fs::metadata(&temp_aac_path) {
+                                if let Ok(meta) = std::fs::metadata(&temp_out) {
                                     let written = meta.len() as f64;
-                                    let bitrate_bps: f64 = match bitrate.trim_end_matches('k').parse::<f64>() {
-                                        Ok(v) => v * 1000.0,
-                                        Err(_) => 0.0,
+                                    let bitrate_bps: f64 = if is_mp3 {
+                                        245_000.0
+                                    } else {
+                                        match bitrate.trim_end_matches('k').parse::<f64>() {
+                                            Ok(v) => v * 1000.0,
+                                            Err(_) => 0.0,
+                                        }
                                     };
                                     let expected_bytes = bitrate_bps * file_duration / 8.0;
                                     if expected_bytes > 0.0 {
@@ -192,7 +234,7 @@ where
                     &format!("Transcoded {}/{} — {}", done.min(total), total, name),
                 );
 
-                Ok(temp_aac)
+                Ok(temp_out)
             })
             .collect()
     })

@@ -62,7 +62,7 @@
     <div class="metadata-fields">
       <FormField label="Title">
         {#snippet children()}
-          <input class="u-input u-input--sm" type="text" bind:value={metadataStore.title} placeholder="Audiobook title" />
+          <input class="u-input u-input--sm" type="text" bind:value={metadataStore.title} placeholder="Title" />
         {/snippet}
       </FormField>
       <FormField label="Author">

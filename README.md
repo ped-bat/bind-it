@@ -1,9 +1,9 @@
-# Bindery
+# Bind it
 
-Bind your audiobook chapters into a single M4B.
+Bind your audio file chapters into a single M4B.
 
-Bindery is a native desktop app that merges chapter files (MP3, M4A, M4B) into one
-M4B audiobook with chapters, metadata, and cover art — ready for any player.
+Bind it is a native desktop app that merges chapter files (MP3, M4A, M4B) into one
+M4B audio file with chapters, metadata, and cover art — ready for any player.
 
 ## Features
 
@@ -18,7 +18,7 @@ M4B audiobook with chapters, metadata, and cover art — ready for any player.
 
 ## How It Works
 
-Bindery inspects the codec of every input file and picks the fastest merge path:
+Bind it inspects the codec of every input file and picks the fastest merge path:
 
 1. **Remux** — when all files are AAC (M4A/M4B), they are concatenated directly into the
    output container with no re-encoding. This is near-instant and completely lossless.

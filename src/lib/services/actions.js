@@ -10,6 +10,7 @@ import { browseFiles, browseFolderAndResolve } from "$lib/services/tauri.js";
  * @param {string | null} [folderName]
  */
 export async function addFiles(paths, folderName = null) {
+  const wasEmpty = fileStore.count === 0;
   const result = await fileStore.add(paths, {
     folderName,
     setError: (msg) => { appStore.error = msg; },
@@ -17,7 +18,7 @@ export async function addFiles(paths, folderName = null) {
     announce: (msg) => appStore.announce(msg),
   });
   if (result?.firstFile) {
-    settingsStore.setOutputDirFromFile(result.firstFile.path);
+    if (wasEmpty) settingsStore.setOutputDirFromFile(result.firstFile.path);
     metadataStore.populateFrom(result.firstFile);
     settingsStore.setFilenameFrom(folderName, result.firstFile);
   }

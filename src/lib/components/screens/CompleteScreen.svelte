@@ -39,7 +39,7 @@
       <div class="complete-icon">
         <Icon name="check-circle" width={56} height={56} />
       </div>
-      <h2 class="complete-title">Audiobook bound!</h2>
+      <h2 class="complete-title">Audio files bound!</h2>
     </div>
 
     {#if conversionStore.completionData}

@@ -1,21 +1,21 @@
-mod binaries;
-mod concat;
-mod cover;
-mod merge;
-mod plan;
-mod preflight;
-mod probe;
-mod scan;
-mod transcode;
-mod types;
-mod util;
+pub mod binaries;
+pub mod concat;
+pub mod cover;
+pub mod merge;
+pub mod plan;
+pub mod preflight;
+pub mod probe;
+pub mod scan;
+pub mod transcode;
+pub mod types;
+pub mod util;
 
 #[cfg(test)]
 mod tests;
 
 use binaries::check_ffmpeg;
 use cover::{get_cover_art, set_custom_cover_art};
-use merge::{cancel_merge, merge_audiobook};
+use merge::{cancel_merge, merge_audio_files};
 use plan::get_merge_plan;
 use preflight::preflight_check;
 use probe::probe_files;
@@ -32,7 +32,7 @@ pub fn run() {
             get_cover_art,
             set_custom_cover_art,
             get_merge_plan,
-            merge_audiobook,
+            merge_audio_files,
             cancel_merge,
             resolve_audio_paths,
             check_ffmpeg,

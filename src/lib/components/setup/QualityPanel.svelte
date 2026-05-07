@@ -10,6 +10,7 @@
   import { formatDurationHuman, estimateSize } from "$lib/services/format.js";
 
   const LOSSY_CODECS = ["mp3", "wma"];
+  const NATIVE_M4B_CODECS = ["aac", "mp3", "alac"];
   const MODE_OPTIONS = [
     { value: "lossless", label: "Lossless" },
     { value: "compress", label: "Compress" },
@@ -18,6 +19,12 @@
     { value: false, label: "Stereo" },
     { value: true, label: "Mono" },
   ];
+  const FORMAT_OPTIONS = [
+    { value: "original", label: "Original (preserve source codec)" },
+    { value: "original-m4b", label: "Original wrapped in M4B" },
+    { value: "aac", label: "AAC (lossy, M4B)" },
+    { value: "alac", label: "ALAC (lossless, M4B)" },
+  ];
 
   $effect(() => {
     void settingsStore.bitrate, settingsStore.mono, settingsStore.qualityMode;
@@ -25,9 +32,31 @@
   });
 
   const isLossless = $derived(settingsStore.qualityMode === "lossless");
-  const allAac = $derived(fileStore.items.length > 0 && fileStore.items.every(f => f.codec === "aac"));
-  const willOutputAlac = $derived(isLossless && !allAac);
+  const format = $derived(settingsStore.outputFormat);
+  // AAC pins quality to compress; ALAC pins quality to lossless. Surface
+  // that in the segmented control by disabling the unavailable option.
+  const lossyOnly = $derived(format === "aac");
+  const losslessOnly = $derived(format === "alac");
+  const modeOptions = $derived(MODE_OPTIONS.map(o => ({
+    ...o,
+    disabled: (o.value === "lossless" && lossyOnly) || (o.value === "compress" && losslessOnly),
+  })));
+
+  const allSameNative = $derived(
+    fileStore.items.length > 0
+      && NATIVE_M4B_CODECS.includes(fileStore.items[0].codec)
+      && fileStore.items.every(f => f.codec === fileStore.items[0].codec)
+  );
+  const willOutputAlac = $derived(format === "alac"
+    || (format === "original" && isLossless && !allSameNative)
+    || (format === "original-m4b" && isLossless && !allSameNative));
   const hasLossySource = $derived(fileStore.items.some(f => LOSSY_CODECS.includes(f.codec)));
+
+  /** @param {Event} e */
+  function onFormatChange(e) {
+    const v = /** @type {HTMLSelectElement} */ (e.currentTarget).value;
+    settingsStore.setOutputFormat(/** @type {any} */ (v));
+  }
 
   function effectiveBps() {
     if (isLossless) {
@@ -42,8 +71,20 @@
   <Panel title="Quality">
     <div class="encoding-fields">
       <div class="quality-row">
+        <FormField label="Output format">
+          {#snippet children()}
+            <select class="u-input u-input--sm" value={format} onchange={onFormatChange}>
+              {#each FORMAT_OPTIONS as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          {/snippet}
+        </FormField>
+      </div>
+
+      <div class="quality-row">
         <FieldLabel>{#snippet children()}Mode{/snippet}</FieldLabel>
-        <SegmentedButtonGroup bind:value={settingsStore.qualityMode} options={MODE_OPTIONS} ariaLabel="Quality mode" />
+        <SegmentedButtonGroup bind:value={settingsStore.qualityMode} options={modeOptions} ariaLabel="Quality mode" />
       </div>
 
       {#if !isLossless}
@@ -82,7 +123,7 @@
           <Banner
             variant="info"
             dismissible={false}
-            message="ALAC M4B plays on Apple devices; some audiobook apps may not open it."
+            message="ALAC M4B plays on Apple devices; some third-party players may not open it."
           />
         </div>
       {/if}

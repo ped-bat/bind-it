@@ -37,6 +37,12 @@ pub struct MergeConfig {
     pub durations: Option<Vec<f64>>,
     #[serde(default)]
     pub output_codec: Option<String>,
+    /// When true, an MP3 audio stream is wrapped inside an MP4 (.m4b)
+    /// container instead of a bare .mp3. Trades off Apple Books chapter UI
+    /// (which only works on M4B) against playback compatibility (Apple's
+    /// MP4 demuxer refuses MP3 streams; VLC plays them).
+    #[serde(default)]
+    pub wrap_in_mp4: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

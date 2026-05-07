@@ -5,6 +5,9 @@
   import Button from "$lib/components/ui/Button.svelte";
   import { settingsStore, FORBIDDEN_FILENAME_CHARS } from "$lib/stores/settings.svelte.js";
   import { browseFolder } from "$lib/services/tauri.js";
+  import { outputExtension } from "$lib/services/output.js";
+
+  const ext = $derived(outputExtension());
 
   let browsePending = $state(false);
 
@@ -12,7 +15,7 @@
     if (browsePending) return;
     browsePending = true;
     try {
-      const dir = await browseFolder();
+      const dir = await browseFolder(settingsStore.outputDir);
       if (dir) {
         settingsStore.outputDir = dir;
         settingsStore.persistOutputDir();
@@ -50,7 +53,7 @@
       {#snippet children()}
         <div class="filename-input">
           <input class="u-input u-input--sm filename-input-field" type="text" bind:value={settingsStore.outputFilename} placeholder="output" aria-invalid={invalidChars !== ""} />
-          <span class="ext">.m4b</span>
+          <span class="ext">.{ext}</span>
         </div>
         {#if invalidChars}
           <p class="filename-warning" transition:slide={{ duration: 150 }}>

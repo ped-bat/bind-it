@@ -52,23 +52,24 @@ pub fn is_temp_path(path: &str) -> bool {
     canonical.starts_with(&tmp)
 }
 
-pub fn unique_output_path(dir: &Path, filename: &str) -> PathBuf {
-    let name = if filename.to_lowercase().ends_with(".m4b") {
+pub fn unique_output_path(dir: &Path, filename: &str, ext: &str) -> PathBuf {
+    let lower = filename.to_lowercase();
+    let name = if lower.ends_with(".m4b") || lower.ends_with(".mp3") {
         &filename[..filename.len() - 4]
     } else {
         filename
     };
-    let candidate = dir.join(format!("{}.m4b", name));
+    let candidate = dir.join(format!("{}.{}", name, ext));
     if !candidate.exists() {
         return candidate;
     }
     for i in 1..=999 {
-        let candidate = dir.join(format!("{} ({}).m4b", name, i));
+        let candidate = dir.join(format!("{} ({}).{}", name, i, ext));
         if !candidate.exists() {
             return candidate;
         }
     }
-    dir.join(format!("{} (999).m4b", name))
+    dir.join(format!("{} (999).{}", name, ext))
 }
 
 pub fn categorize_error(err: &str) -> String {
@@ -92,27 +93,65 @@ pub fn categorize_error(err: &str) -> String {
         || err.contains("No such file or directory: ffprobe")
     {
         "ffmpeg is required but not installed. Install it with: brew install ffmpeg".to_string()
-    } else if err.contains("No audio stream") || err.contains("Invalid data found")
-        || err.contains("could not find codec") || err.contains("Invalid argument")
+    } else if err.contains("No audio stream")
+        || err.contains("Invalid data found when processing input")
+        || err.contains("could not find codec")
     {
-        if let Some(start) = err.find("for ") {
-            let rest = &err[start + 4..];
-            let path_end = rest.find(':').unwrap_or(rest.len());
-            let path = &rest[..path_end];
-            let name = Path::new(path).file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(path);
+        if let Some(name) = extract_source_filename(err) {
             return format!("Could not read {}. The file may be corrupted.", name);
         }
         "Could not read a source file. The file may be corrupted.".to_string()
     } else {
-        format!("Conversion failed: {}", err)
+        let tail = extract_stderr_tail(err);
+        if tail.is_empty() {
+            format!("Conversion failed: {}", err)
+        } else {
+            format!("Conversion failed — {}", tail)
+        }
     }
 }
 
+/// Pulls the source path out of errors shaped like
+/// `"Transcode failed for /abs/path.mp3: <stderr>"`.
+fn extract_source_filename(err: &str) -> Option<String> {
+    let marker = " failed for ";
+    let start = err.find(marker)?;
+    let rest = &err[start + marker.len()..];
+    let path_end = rest.find(": ").unwrap_or(rest.len());
+    let path = &rest[..path_end];
+    Path::new(path).file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())
+}
+
+/// Returns the last non-empty line of an ffmpeg stderr blob, trimmed.
+/// Useful for surfacing the actual failure reason without the full log.
+fn extract_stderr_tail(err: &str) -> String {
+    err.lines()
+        .rev()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .to_string()
+}
+
 pub fn clean_chapter_name(filename: &str) -> String {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(?:(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*|\d{1,3}\s*[-–—.]\s*)").unwrap()
+    // Pattern A: "Chapter NN - …", "Part NN - …", "Track NN - …", "Section NN - …".
+    // Always strip — the leading word is filler.
+    static WORD_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*").unwrap()
+    });
+    // Pattern B: two numeric prefixes back-to-back, e.g. "01 - 02 - Title" or
+    // "01 - 01 - Title". The FIRST one is the unique track/index across files;
+    // the second is often a static disc number repeated across the whole set.
+    // Keep the first, drop the second — otherwise sets like
+    // "NN - 01 - Author - Album" collapse to identical chapter titles.
+    static DOUBLE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^(\d{1,3}\s*[-–—.]\s*)\d{1,3}\s*[-–—.]\s*").unwrap()
+    });
+    // Pattern C: a single numeric prefix, e.g. "01 - Title". Strip it.
+    static SINGLE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^\d{1,3}\s*[-–—.]\s*").unwrap()
     });
 
     let name = Path::new(filename)
@@ -120,14 +159,16 @@ pub fn clean_chapter_name(filename: &str) -> String {
         .and_then(|s| s.to_str())
         .unwrap_or(filename);
 
-    let cleaned = RE.replace(name, "").to_string();
+    let cleaned = if WORD_PREFIX.is_match(name) {
+        WORD_PREFIX.replace(name, "").to_string()
+    } else if DOUBLE_PREFIX.is_match(name) {
+        DOUBLE_PREFIX.replace(name, "$1").to_string()
+    } else {
+        SINGLE_PREFIX.replace(name, "").to_string()
+    };
 
     let result = cleaned.trim().to_string();
-    if result.is_empty() {
-        name.trim().to_string()
-    } else {
-        result
-    }
+    if result.is_empty() { name.trim().to_string() } else { result }
 }
 
 fn escape_ffmetadata(value: &str) -> String {

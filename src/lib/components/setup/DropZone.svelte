@@ -46,7 +46,7 @@
     ondragleave={() => appStore.dragOver = false}
     ondrop={handleDrop}
   >
-    <AppHeader size="md" />
+    <AppHeader size="md" animation="intro" />
     <p class="drop-title drop-title-spaced">Drop files or folders here</p>
     <p class="drop-subtitle">MP3, M4A, M4B, AAC, WAV, FLAC, WMA</p>
     <div class="drop-buttons">

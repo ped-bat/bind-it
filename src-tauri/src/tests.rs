@@ -1,10 +1,10 @@
 //! Synthetic-fixture integration tests.
 //!
 //! Generate tiny sine-wave clips per format via ffmpeg, then exercise the
-//! merge pipeline end-to-end without requiring any external audiobook files.
+//! merge pipeline end-to-end without requiring any external audio files.
 
 use crate::binaries::{FFMPEG_PATH, FFPROBE_PATH};
-use crate::merge::merge_audiobook_core;
+use crate::merge::merge_audio_files_core;
 use crate::plan::get_merge_plan;
 use crate::probe::probe_all_files;
 use crate::types::{FileEntry, FilePlanInfo, MergeConfig};
@@ -110,11 +110,12 @@ fn test_config(paths: &[String], out_dir: &Path, out_name: &str) -> MergeConfig 
         force_transcode: false,
         durations: None,
         output_codec: None,
+        wrap_in_mp4: false,
     }
 }
 
 fn run_merge(config: MergeConfig) -> String {
-    merge_audiobook_core(config, |_, _, _| {}).expect("merge_audiobook_core failed")
+    merge_audio_files_core(config, |_, _, _| {}).expect("merge_audio_files_core failed")
 }
 
 fn assert_chapters(output: &str, expected: usize) -> f64 {
@@ -298,6 +299,7 @@ fn merge_tags_metadata_correctly() {
         force_transcode: false,
         durations: None,
         output_codec: None,
+        wrap_in_mp4: false,
     };
     let output = run_merge(config);
     let json = probe_output(&output);
@@ -356,6 +358,32 @@ fn merge_preserves_chapter_names() {
 }
 
 #[test]
+fn clean_chapter_name_handles_double_numeric_prefix() {
+    // Real-world Audible-style naming: "<disc> - <track> - <author> - <album>".
+    // The disc number rotates per file; the track number is often "01" for
+    // every file in the set. Cleaning must keep the disc number so chapters
+    // don't collapse to identical titles.
+    assert_eq!(
+        clean_chapter_name("01 - 01 - Robert Greene - 48 Laws Of Power.mp3"),
+        "01 - Robert Greene - 48 Laws Of Power",
+    );
+    assert_eq!(
+        clean_chapter_name("02 - 01 - Robert Greene - 48 Laws Of Power.mp3"),
+        "02 - Robert Greene - 48 Laws Of Power",
+    );
+    assert_eq!(
+        clean_chapter_name("08 - 01 - Robert Greene - 48 Laws Of Power.mp3"),
+        "08 - Robert Greene - 48 Laws Of Power",
+    );
+    // Single-prefix files (the disc index is unique per file): strip it.
+    assert_eq!(clean_chapter_name("05 - Foreword.mp3"), "Foreword");
+    // Word-prefixed: strip the whole word + number marker.
+    assert_eq!(clean_chapter_name("Chapter 03 - The Bet.mp3"), "The Bet");
+    // No recognizable prefix: keep as-is.
+    assert_eq!(clean_chapter_name("Just a Title.mp3"), "Just a Title");
+}
+
+#[test]
 fn merge_force_transcode_on_aac() {
     let tmp = tempfile::tempdir().unwrap();
     let paths = make_fixtures(tmp.path(), 2, "aac");
@@ -391,6 +419,173 @@ fn merge_long_mp3_with_cover_does_not_hang() {
     let output = rx.recv_timeout(std::time::Duration::from_secs(60))
         .expect("transcode hung — pipe likely not being drained");
     assert!(Path::new(&output).exists());
+}
+
+fn audio_codec(output: &str) -> String {
+    let json = probe_output(output);
+    json["streams"].as_array().unwrap().iter()
+        .find(|s| s["codec_type"] == "audio").unwrap()
+        ["codec_name"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn merge_mp3_uniform_remuxes_losslessly() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = make_fixtures(tmp.path(), 2, "mp3");
+    let output = run_merge(test_config(&paths, tmp.path(), "mp3_uniform"));
+    assert_chapters(&output, 2);
+    assert_eq!(audio_codec(&output), "mp3",
+        "uniform MP3 input should remux as MP3 (lossless)");
+    assert!(output.ends_with(".mp3"),
+        "MP3 remux must land in a .mp3 container — Apple players reject MP3-in-MP4");
+    assert_chap_byte_offsets_set(&output);
+}
+
+#[test]
+fn merge_mp3_non_uniform_reencodes_outliers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    for (i, sr) in [(1, 44_100), (2, 44_100), (3, 48_000)] {
+        let p = tmp.path().join(format!("0{i}.mp3"));
+        gen_sine(&p, 1.5, sr, "mp3");
+        paths.push(p.to_string_lossy().to_string());
+    }
+    let output = run_merge(test_config(&paths, tmp.path(), "mp3_non_uniform"));
+    assert_chapters(&output, 3);
+    assert_eq!(audio_codec(&output), "mp3",
+        "non-uniform MP3 should still land as MP3 after outlier re-encode");
+    assert!(output.ends_with(".mp3"));
+    assert_chap_byte_offsets_set(&output);
+}
+
+#[test]
+fn merge_mp3_wrapped_in_mp4_keeps_codec_and_uses_m4b_container() {
+    // The "Original wrapped in M4B" UI option: same MP3 stream, but the
+    // muxer writes an MP4 container with native chapter atoms so Apple Books
+    // shows the chapter list. Apple Preview won't play this — that's the
+    // documented trade-off — but we verify the container/codec choice and
+    // chapter count programmatically.
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = make_fixtures(tmp.path(), 3, "mp3");
+    let mut config = test_config(&paths, tmp.path(), "mp3_wrapped");
+    config.wrap_in_mp4 = true;
+    let output = run_merge(config);
+    assert!(output.ends_with(".m4b"),
+        "wrap_in_mp4 must yield .m4b output");
+    assert_eq!(audio_codec(&output), "mp3",
+        "wrap_in_mp4 must remux the MP3 stream, not transcode");
+    assert_chapters(&output, 3);
+}
+
+#[test]
+fn merge_mp3_with_embedded_cover_in_source() {
+    // Real-world MP3s often carry an attached_pic (mjpeg cover art).
+    // The strip pass must drop that stream — leaving it would force ffmpeg
+    // to write an ID3v2 header we've explicitly disabled, which fails the
+    // mux. Regression guard for that exact crash.
+    let tmp = tempfile::tempdir().unwrap();
+    let cover = tmp.path().join("cover.jpg");
+    gen_cover(&cover);
+    let mut paths = Vec::new();
+    for i in 1..=2 {
+        let p = tmp.path().join(format!("part_{i}.mp3"));
+        let sine = "sine=frequency=440:duration=1.5:sample_rate=44100";
+        let out = std::process::Command::new(FFMPEG_PATH.as_str())
+            .args([
+                "-y",
+                "-f", "lavfi", "-i", sine,
+                "-i", cover.to_str().unwrap(),
+                "-map", "0:a", "-map", "1:v",
+                "-c:a", "libmp3lame", "-b:a", "64k",
+                "-c:v", "copy",
+                "-disposition:v:0", "attached_pic",
+                "-id3v2_version", "3",
+                p.to_str().unwrap(),
+            ])
+            .output()
+            .expect("ffmpeg spawn");
+        assert!(out.status.success(),
+            "fixture gen failed: {}", String::from_utf8_lossy(&out.stderr));
+        paths.push(p.to_string_lossy().to_string());
+    }
+    let output = run_merge(test_config(&paths, tmp.path(), "mp3_with_cover_src"));
+    assert_chapters(&output, 2);
+    assert_eq!(audio_codec(&output), "mp3");
+    assert!(output.ends_with(".mp3"));
+    assert_chap_byte_offsets_set(&output);
+}
+
+/// Walk the ID3v2 tag and assert every CHAP frame has real byte offsets,
+/// not the 0xFFFFFFFF "unset" sentinel. Apple Books reads those offsets as
+/// actual file positions and renders 0:00 durations when they're left unset,
+/// so leaving them in is a regression.
+fn assert_chap_byte_offsets_set(path: &str) {
+    let data = std::fs::read(path).expect("read output");
+    assert_eq!(&data[..3], b"ID3", "expected ID3v2 header");
+    let id3_major = data[3];
+    let tag_size = ((data[6] as u32 & 0x7f) << 21)
+        | ((data[7] as u32 & 0x7f) << 14)
+        | ((data[8] as u32 & 0x7f) << 7)
+        | (data[9] as u32 & 0x7f);
+    let audio_start = 10u32 + tag_size;
+    let file_size = data.len() as u32;
+    let mut pos: usize = 10;
+    let tag_end = (10 + tag_size as usize).min(data.len());
+    let mut chap_count = 0;
+    let mut last_end: u32 = 0;
+    let mut prev_start: u32 = 0;
+    while pos + 10 <= tag_end {
+        let fid = &data[pos..pos + 4];
+        if fid == [0u8; 4] { break; }
+        let s = &data[pos + 4..pos + 8];
+        let frame_size = if id3_major >= 4 {
+            ((s[0] as u32 & 0x7f) << 21) | ((s[1] as u32 & 0x7f) << 14)
+                | ((s[2] as u32 & 0x7f) << 7) | (s[3] as u32 & 0x7f)
+        } else {
+            ((s[0] as u32) << 24) | ((s[1] as u32) << 16)
+                | ((s[2] as u32) << 8) | (s[3] as u32)
+        } as usize;
+        if fid == b"CHAP" {
+            let body_start = pos + 10;
+            let mut z = body_start;
+            while z < data.len() && data[z] != 0 { z += 1; }
+            let off_pos = z + 1 + 8;
+            let start_off = u32::from_be_bytes(data[off_pos..off_pos+4].try_into().unwrap());
+            let end_off = u32::from_be_bytes(data[off_pos+4..off_pos+8].try_into().unwrap());
+            assert_ne!(start_off, 0xFFFFFFFF, "CHAP start_offset must not be unset");
+            assert_ne!(end_off, 0xFFFFFFFF, "CHAP end_offset must not be unset");
+            assert!(end_off < file_size,
+                "CHAP end_offset {} must be inside file (size {})", end_off, file_size);
+            assert!(start_off >= audio_start,
+                "CHAP start_offset {} must not be inside the ID3v2 tag (audio_start={})",
+                start_off, audio_start);
+            if chap_count > 0 {
+                assert!(start_off > prev_start,
+                    "CHAP starts must be monotonic: {} <= prev {}", start_off, prev_start);
+            }
+            prev_start = start_off;
+            last_end = end_off;
+            chap_count += 1;
+        }
+        pos += 10 + frame_size;
+    }
+    assert!(chap_count > 0, "no CHAP frames found in output");
+    // The last chapter must reach (close to) the end of the file — anything
+    // less means we under-counted audio bytes; anything past EOF means we
+    // overshot. Allow up to 1 KB slack for trailing padding.
+    let slack: u32 = 1024;
+    assert!(last_end + slack >= file_size && last_end < file_size,
+        "last CHAP end_offset {} should reach near file end {}", last_end, file_size);
+}
+
+#[test]
+fn merge_alac_uniform_remuxes_losslessly() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = make_fixtures(tmp.path(), 2, "alac");
+    let output = run_merge(test_config(&paths, tmp.path(), "alac_uniform"));
+    assert_chapters(&output, 2);
+    assert_eq!(audio_codec(&output), "alac",
+        "uniform ALAC input should remux as ALAC (lossless)");
 }
 
 #[test]

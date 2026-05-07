@@ -1,19 +1,17 @@
 <script>
-  import LogoMark from "$lib/LogoMark.svelte";
+  import LottieMark from "$lib/components/ui/LottieMark.svelte";
 
-  /** @type {{ size?: 'sm' | 'md' | 'lg' }} */
-  let { size = "md" } = $props();
+  /** @type {{ size?: 'sm' | 'md' | 'lg', animation?: 'intro' | 'pulse', loop?: boolean, label?: string }} */
+  let { size = "md", animation = "pulse", loop = false, label = "Bind it" } = $props();
 
   const dims = $derived.by(() => {
-    if (size === "sm") return { logoW: 30, logoH: 26, font: "var(--font-2xl)" };
-    if (size === "lg") return { logoW: 76, logoH: 64, font: "var(--font-4xl)" };
-    return { logoW: 60, logoH: 50, font: "var(--font-3xl)" };
+    return { logoW: 100, logoH: 80, font: "var(--font-3xl)" };
   });
 </script>
 
 <header class="app-header">
-  <LogoMark width={dims.logoW} height={dims.logoH} />
-  <h1 style="font-size: {dims.font};">Bindery</h1>
+  <LottieMark {animation} {loop} width={dims.logoW} height={dims.logoH} ariaLabel={label} />
+  <h1 style="margin-top:-5px; font-size: {dims.font};">{label}</h1>
 </header>
 
 <style>
@@ -22,10 +20,6 @@
     flex-direction: column;
     align-items: center;
     gap: var(--space-2);
-  }
-
-  .app-header :global(.logo-mark) {
-    color: var(--accent);
   }
 
   h1 {

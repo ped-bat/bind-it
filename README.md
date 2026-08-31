@@ -66,4 +66,4 @@ The build output (`.dmg`) will be in `src-tauri/target/release/bundle/`.
 
 ## License
 
-Proprietary. All rights reserved.
+MIT — see [LICENSE](LICENSE). Copyright © 2026 Pedro Batista.

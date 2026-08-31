@@ -50,9 +50,15 @@ pub fn resolve_audio_paths(paths: Vec<String>) -> ResolvedPaths {
     ResolvedPaths { paths: result, folder_name }
 }
 
+// Hard recursion ceiling. Defends against pathological filesystems
+// (hardlinked dir cycles, hostile junctions) — symlink loops are already
+// skipped via `symlink_metadata` below, but on Windows there is no inode
+// equivalent, so a depth cap is the only cross-platform backstop.
+const MAX_SCAN_DEPTH: usize = 64;
+
 fn scan_dir_recursive(dir: &Path, exts: &[&str], result: &mut Vec<String>) {
     let mut visited: HashSet<(u64, u64)> = HashSet::new();
-    scan_dir_inner(dir, exts, result, &mut visited);
+    scan_dir_inner(dir, exts, result, &mut visited, 0);
 }
 
 #[cfg(unix)]
@@ -63,7 +69,8 @@ fn dir_id(path: &Path) -> Option<(u64, u64)> {
 #[cfg(not(unix))]
 fn dir_id(_path: &Path) -> Option<(u64, u64)> { None }
 
-fn scan_dir_inner(dir: &Path, exts: &[&str], result: &mut Vec<String>, visited: &mut HashSet<(u64, u64)>) {
+fn scan_dir_inner(dir: &Path, exts: &[&str], result: &mut Vec<String>, visited: &mut HashSet<(u64, u64)>, depth: usize) {
+    if depth > MAX_SCAN_DEPTH { return; }
     if let Some(id) = dir_id(dir) {
         if !visited.insert(id) { return; }
     }
@@ -78,7 +85,7 @@ fn scan_dir_inner(dir: &Path, exts: &[&str], result: &mut Vec<String>, visited: 
                         continue;
                     }
                 }
-                scan_dir_inner(&path, exts, result, visited);
+                scan_dir_inner(&path, exts, result, visited, depth + 1);
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 if exts.contains(&ext.to_lowercase().as_str()) {
                     if let Some(s) = path.to_str() {

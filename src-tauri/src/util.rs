@@ -139,7 +139,7 @@ pub fn clean_chapter_name(filename: &str) -> String {
     // Pattern A: "Chapter NN - …", "Part NN - …", "Track NN - …", "Section NN - …".
     // Always strip — the leading word is filler.
     static WORD_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*").unwrap()
+        Regex::new(r"^(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*").expect("WORD_PREFIX regex")
     });
     // Pattern B: two numeric prefixes back-to-back, e.g. "01 - 02 - Title" or
     // "01 - 01 - Title". The FIRST one is the unique track/index across files;
@@ -147,11 +147,11 @@ pub fn clean_chapter_name(filename: &str) -> String {
     // Keep the first, drop the second — otherwise sets like
     // "NN - 01 - Author - Album" collapse to identical chapter titles.
     static DOUBLE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(\d{1,3}\s*[-–—.]\s*)\d{1,3}\s*[-–—.]\s*").unwrap()
+        Regex::new(r"^(\d{1,3}\s*[-–—.]\s*)\d{1,3}\s*[-–—.]\s*").expect("DOUBLE_PREFIX regex")
     });
     // Pattern C: a single numeric prefix, e.g. "01 - Title". Strip it.
     static SINGLE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^\d{1,3}\s*[-–—.]\s*").unwrap()
+        Regex::new(r"^\d{1,3}\s*[-–—.]\s*").expect("SINGLE_PREFIX regex")
     });
 
     let name = Path::new(filename)

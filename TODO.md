@@ -12,11 +12,31 @@
 - [X] Fix lossless / compress UI
 - [X] Add support for all main audio formats including FLAC and WAV
 - [X] Stress test app
-- [ ] Add lottie animations
+- [X] Add lottie animations
+- [X] Register domain
+- [X] Add domain to siteground
+- [X] Add SSL
+- [X] Create repo for website on git
+- [X] Add repo ftp workflow
+- [X] On the chapters file list, when the file size is large the string breaks into two lines, instead the columns should be flexible to adapt for possible longer strings on some columns
+- [X] On the output panel when io press the input text box for the file name, the extension box on the right side of the text inpout remains in it's normal state, instead the border should behave accordingly
+- [X] If i try to clear the folder or filename text input and leave it empty and press bind it button nothing happens - there should be fields validation on these two, with a red border when empty and if user presses bind it still, it should say please fill "input name"
+- [X] Quality panel on the expected output is missing the experected file size with mp3's
+- [X] Let's make the default size of the app window larger
+- [X] If i try to drag a track that's not the first to the first position it doesn't work
+- [X] On the success page after completion let's also show the output format and codec, same rules as shown on the expexted output in the settings page
+- [X] On the settings page the expected output string, should be the same font size as the text input fields on the rest of the panel like the string inside filename input field
+- [X] When i hover the app on the macbook dock it should say "Bind it" not "bind-it"
+- [X] On the menu Bind it > About bind-it, should be About Bind it
+- [X] Let's change the version of the app to 1.0
+- [X] On the menu Bind it > About Bind it should show: Author: Pedro Batista 
+- [X] Add it to new repository on my account
+- [ ] Delete bindery repository
+- [ ] Add website to the main repository?
 - [ ] Test fresh installation on another mac
 - [ ] Test installation on windows
 - [ ] Test installation on linux
 - [ ] Figure out app publishing
+- [ ] Convert all audiobooks
 - [ ] Create landing page
-- [ ] Get domain
 - [ ] Publish website and app

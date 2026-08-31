@@ -91,7 +91,10 @@ class FileStore {
         path: f.path, codec: f.codec, sample_rate: f.sample_rate,
         channels: f.channels, duration: f.duration,
       })));
-    } catch { this.mergePlan = null; }
+    } catch (e) {
+      console.warn("getMergePlan failed:", e);
+      this.mergePlan = null;
+    }
   }
 
   clear() {

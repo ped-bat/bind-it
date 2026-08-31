@@ -40,10 +40,10 @@ pub fn get_cover_art(paths: Vec<String>) -> Option<CoverArtResult> {
         .suffix(".jpg")
         .tempfile()
     {
-        Ok(f) => {
-            let (_, path) = f.keep().unwrap();
-            path
-        }
+        Ok(f) => match f.keep() {
+            Ok((_, path)) => path,
+            Err(_) => return None,
+        },
         Err(_) => return None,
     };
 

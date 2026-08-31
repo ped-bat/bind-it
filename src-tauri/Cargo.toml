@@ -1,8 +1,9 @@
 [package]
 name = "bind-it"
-version = "0.1.0"
+version = "1.0.0"
 description = "Bind audio files into a single M4B"
-authors = ["Jan Petrov <jan.x.petrov@gmail.com>"]
+authors = ["Pedro Batista <me@pedrobatista.pt>"]
+license = "MIT"
 edition = "2021"
 default-run = "bind-it"
 

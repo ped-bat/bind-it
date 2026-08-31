@@ -275,7 +275,8 @@ pub fn add_metadata_and_cover(
         .map_err(|e| format!("Failed to write metadata: {}", e))?;
     let metadata_str = path_str(&metadata_file)?.to_string();
 
-    let has_cover = config.cover_art_path.as_ref().is_some_and(|p| Path::new(p).exists());
+    let cover = config.cover_art_path.as_ref().filter(|p| Path::new(p).exists());
+    let has_cover = cover.is_some();
 
     let mut args: Vec<String> = vec![
         "-y".into(),
@@ -283,8 +284,7 @@ pub fn add_metadata_and_cover(
         "-i".into(), metadata_str,
     ];
 
-    if has_cover {
-        let cover = config.cover_art_path.as_ref().unwrap();
+    if let Some(cover) = cover {
         args.extend_from_slice(&[
             "-i".into(), cover.clone(),
         ]);

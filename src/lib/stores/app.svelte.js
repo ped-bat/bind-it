@@ -14,6 +14,9 @@ class AppStore {
   ffmpegOk = $state(null);
   dragOver = $state(false);
   liveAnnouncement = $state("");
+  // Set to true once the user has attempted to submit; flips required-field
+  // validation styling on. Cleared on successful submit / clearAll.
+  validationAttempted = $state(false);
 
   /** @param {string} msg */
   announce(msg) {
@@ -42,6 +45,7 @@ class AppStore {
     this.warning = null;
     this.screen = "setup";
     this.dismissingError = false;
+    this.validationAttempted = false;
   }
 }
 

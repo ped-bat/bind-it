@@ -74,7 +74,11 @@ export function startReorderDrag({ index, event, itemSelector, containerSelector
       const otherRect = other.getBoundingClientRect();
       const midY = otherRect.top + otherRect.height / 2;
 
-      if ((idx > dragged && dragMidY > midY) || (idx < dragged && dragMidY < midY)) {
+      // `>=` / `<=` so the drop fires when midpoints exactly coincide. With
+      // strict comparisons, dragging to position 0 (or the last slot) fails
+      // because the clamped dragged midpoint equals the boundary item's
+      // midpoint exactly — equal but not strictly less/greater.
+      if ((idx > dragged && dragMidY >= midY) || (idx < dragged && dragMidY <= midY)) {
         onReorder(dragged, idx);
         dragStartY += (idx - dragged) * itemH;
         offsetY = me.clientY - dragStartY;

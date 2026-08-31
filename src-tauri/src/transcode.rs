@@ -217,7 +217,7 @@ where
                 }
 
                 let new_completed_dur = {
-                    let mut d = completed_duration.lock().unwrap();
+                    let mut d = completed_duration.lock().expect("completed_duration lock poisoned");
                     *d += file_duration;
                     *d
                 };

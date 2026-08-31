@@ -31,7 +31,7 @@
 
 <div class="complete-screen" in:fade={{ duration: 300 }}>
   <header class="complete-header">
-    <AppHeader size="sm" />
+    <AppHeader />
   </header>
 
   <div class="complete-content">

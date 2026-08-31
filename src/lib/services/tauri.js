@@ -93,6 +93,8 @@ export async function browseFolderAndResolve() {
  * @param {(payload: any) => void} handlers.onError
  * @param {() => void} handlers.onCancelled
  * @param {(paths: string[], folderName: string | null) => void} handlers.onFileDrop
+ * @param {(message: string) => void} handlers.onDropError
+ * @param {(over: boolean) => void} handlers.onDragState
  * @returns {Promise<() => void>} cleanup function
  */
 export async function setupListeners(handlers) {
@@ -107,8 +109,22 @@ export async function setupListeners(handlers) {
     listen("merge-cancelled", () => safe(handlers.onCancelled)()),
   ]);
 
+  // The native drag-drop events are the only reliable source across
+  // platforms — with dragDropEnabled, WebView2 (Windows) and webkitgtk
+  // (Linux) don't deliver DOM file-drag events at all, so hover state must
+  // come from here rather than DOM dragover/dragleave.
   const unlistenDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
-    if (event.payload.type !== "drop") return;
+    const type = event.payload.type;
+    if (type === "enter" || type === "over") {
+      safe(() => handlers.onDragState(true))();
+      return;
+    }
+    if (type === "leave") {
+      safe(() => handlers.onDragState(false))();
+      return;
+    }
+    if (type !== "drop") return;
+    safe(() => handlers.onDragState(false))();
     const paths = event.payload.paths || [];
     if (paths.length === 0) return;
     try {
@@ -116,10 +132,10 @@ export async function setupListeners(handlers) {
       if (result.paths.length > 0) {
         safe(() => handlers.onFileDrop(result.paths, result.folder_name))();
       } else {
-        safe(handlers.onError)("No supported audio files found in dropped items.");
+        safe(() => handlers.onDropError("No supported audio files found in dropped items."))();
       }
     } catch (e) {
-      safe(handlers.onError)(String(e));
+      safe(() => handlers.onDropError(String(e)))();
     }
   });
 

@@ -2,6 +2,7 @@ import { appStore } from "./app.svelte.js";
 import { fileStore } from "./files.svelte.js";
 import { metadataStore } from "./metadata.svelte.js";
 import { settingsStore } from "./settings.svelte.js";
+import { sanitizeFilename } from "./settings.svelte.js";
 import { preflightCheck, mergeAudioFiles, cancelMerge, revealInFolder } from "$lib/services/tauri.js";
 import { outputExtension, outputContainerLabel, outputCodecLabel } from "$lib/services/output.js";
 
@@ -67,6 +68,18 @@ class ConversionStore {
   /** @type {ReturnType<typeof setInterval> | null} */
   #timer = null;
 
+  // Stats snapshotted when the merge starts, so files added while a
+  // conversion runs can't inflate the completion summary.
+  /** @type {{ fileCount: number, totalDuration: number } | null} */
+  #startStats = null;
+
+  // Merge events can arrive after a cancel or after the user is back on the
+  // setup screen (e.g. a drop error kicked them there). Only a conversion
+  // that is actually on screen may react to them.
+  #eventsExpected() {
+    return appStore.screen === "converting";
+  }
+
   #startTimer() {
     this.elapsedSeconds = 0;
     this.#timer = setInterval(() => { this.elapsedSeconds += 1; }, 1000);
@@ -78,6 +91,7 @@ class ConversionStore {
 
   /** @param {any} payload */
   handleProgress(payload) {
+    if (!this.#eventsExpected()) return;
     this.progress = payload;
     const rounded = Math.round(payload.percent);
     if (rounded > this.displayPercent) this.displayPercent = rounded;
@@ -86,13 +100,14 @@ class ConversionStore {
 
   /** @param {any} payload */
   handleComplete(payload) {
+    if (!this.#eventsExpected()) return;
     this.outputPath = payload.path;
     this.#stopTimer();
     this.completionData = {
       filename: payload.path.split(/[\\/]/).pop() ?? "output.m4b",
       elapsed: this.elapsedSeconds,
-      fileCount: fileStore.count,
-      totalDuration: fileStore.totalDuration,
+      fileCount: this.#startStats?.fileCount ?? fileStore.count,
+      totalDuration: this.#startStats?.totalDuration ?? fileStore.totalDuration,
       sizeBytes: payload.size_bytes,
       containerLabel: outputContainerLabel(),
       codecLabel: outputCodecLabel(),
@@ -103,6 +118,7 @@ class ConversionStore {
 
   /** @param {any} payload */
   handleError(payload) {
+    if (!this.#eventsExpected()) return;
     this.#stopTimer();
     appStore.error = String(payload);
     appStore.screen = "setup";
@@ -110,16 +126,22 @@ class ConversionStore {
   }
 
   handleCancelled() {
+    if (!this.#eventsExpected()) return;
     this.#stopTimer();
-    appStore.error = "Conversion cancelled";
+    appStore.warning = "Conversion cancelled — your chapters and settings are unchanged.";
     appStore.screen = "setup";
+    appStore.announce("Conversion cancelled");
   }
 
   async start() {
     if (fileStore.count < 1) return;
+    if (fileStore.probing) {
+      appStore.error = "Still reading files — wait for probing to finish, then try again.";
+      return;
+    }
 
     const folder = settingsStore.outputDir.trim();
-    const filename = settingsStore.outputFilename.trim();
+    const filename = sanitizeFilename(settingsStore.outputFilename);
     const missing = [];
     if (!folder) missing.push("output folder");
     if (!filename) missing.push("filename");
@@ -128,6 +150,10 @@ class ConversionStore {
       appStore.error = `Please fill the ${missing.join(" and ")} before binding.`;
       return;
     }
+    // Reflect the cleaned values in the UI so what the user sees is what
+    // gets written.
+    settingsStore.outputDir = folder;
+    settingsStore.outputFilename = filename;
 
     appStore.validationAttempted = false;
     appStore.error = null;
@@ -136,8 +162,8 @@ class ConversionStore {
     try {
       const preflight = await preflightCheck({
         files: fileStore.items.map(f => f.path),
-        outputDir: settingsStore.outputDir,
-        outputFilename: settingsStore.outputFilename,
+        outputDir: folder,
+        outputFilename: filename,
         outputExtension: outputExtension(),
       });
       if (!preflight.ok) { appStore.error = preflight.errors.join("\n"); return; }
@@ -150,6 +176,7 @@ class ConversionStore {
     this.progress = { stage: STAGES.PREPARING, percent: 0, message: "Starting" };
     this.displayPercent = 0;
     this.displayMessage = "Starting";
+    this.#startStats = { fileCount: fileStore.count, totalDuration: fileStore.totalDuration };
     appStore.screen = "converting";
     this.#startTimer();
     appStore.announce("Conversion started");
@@ -163,8 +190,8 @@ class ConversionStore {
     try {
       await mergeAudioFiles({
         files: fileStore.items.map(f => ({ path: f.path, chapter_name: f.chapter_name })),
-        output_dir: settingsStore.outputDir,
-        output_filename: settingsStore.outputFilename,
+        output_dir: folder,
+        output_filename: filename,
         title: metadataStore.title || null,
         artist: metadataStore.artist || null,
         album: metadataStore.album || null,

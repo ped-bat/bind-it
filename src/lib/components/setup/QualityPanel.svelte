@@ -28,6 +28,10 @@
 
   $effect(() => {
     void settingsStore.bitrate, settingsStore.mono, settingsStore.qualityMode;
+    // While the MP3 bitstream-copy path force-displays Lossless, the store
+    // value is not the user's choice — persisting it would permanently
+    // overwrite their saved preference.
+    if (isMp3CopyPath) return;
     settingsStore.persistQuality();
   });
 
@@ -71,9 +75,20 @@
     disabled: isMp3CopyPath,
   })));
 
+  // The mode toggle is disabled while forced, so any non-lossless value we
+  // overwrite here is the user's real preference — remember it and restore
+  // it when the file set leaves the MP3 bitstream-copy path.
+  /** @type {"lossless" | "compress" | null} */
+  let modeBeforeForce = null;
   $effect(() => {
-    if (isMp3CopyPath && settingsStore.qualityMode !== "lossless") {
-      settingsStore.qualityMode = "lossless";
+    if (isMp3CopyPath) {
+      if (settingsStore.qualityMode !== "lossless") {
+        modeBeforeForce = settingsStore.qualityMode;
+        settingsStore.qualityMode = "lossless";
+      }
+    } else if (modeBeforeForce !== null) {
+      settingsStore.qualityMode = modeBeforeForce;
+      modeBeforeForce = null;
     }
   });
 

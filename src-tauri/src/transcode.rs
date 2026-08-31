@@ -13,7 +13,7 @@ fn clamp_aac_bitrate(bitrate: &str, sample_rate: u32, channels: u32) -> String {
         return bitrate.to_string();
     };
     let ceiling = ((sample_rate as u64 * channels as u64 * 7) / 2_000) as u32;
-    let max_kbps = ceiling.min(320).max(32);
+    let max_kbps = ceiling.clamp(32, 320);
     format!("{}k", kbps.min(max_kbps))
 }
 

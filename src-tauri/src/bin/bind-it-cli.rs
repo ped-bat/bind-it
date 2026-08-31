@@ -26,15 +26,16 @@ struct Args {
 
 fn print_help() {
     println!(
-        "bind-it-cli — batch-merge audio file folders into M4B\n\
+        "bind-it-cli — batch-merge audio file folders into a single chaptered file\n\
 \n\
 Usage:\n\
   bind-it-cli <INPUT_DIR> [OPTIONS]\n\
 \n\
 Behavior:\n\
   Scans INPUT_DIR for folders containing audio files. Each such folder is\n\
-  merged into a single <folder-name>.m4b with chapters, written next to the\n\
-  source folder by default.\n\
+  merged into a single <folder-name> output with chapters (.m4b, or .mp3\n\
+  when the source set is uniform MP3), written next to the source folder\n\
+  by default.\n\
 \n\
 Options:\n\
   -o, --output <DIR>   Write all outputs to DIR instead of alongside inputs\n\

@@ -56,11 +56,8 @@ pub fn preflight_check(
         }
     }
 
-    if ffmpeg().arg("-version").output().is_err() {
-        errors.push("ffmpeg is required but not installed. Install it with: brew install ffmpeg".to_string());
-    }
-    if ffprobe().arg("-version").output().is_err() {
-        errors.push("ffprobe is required but not installed. Install it with: brew install ffmpeg".to_string());
+    if ffmpeg().arg("-version").output().is_err() || ffprobe().arg("-version").output().is_err() {
+        errors.push(crate::binaries::ffmpeg_install_hint().to_string());
     }
 
     if let Some(ref name) = output_filename {

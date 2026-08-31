@@ -26,6 +26,14 @@ pub fn validate_filename(name: &str) -> Result<(), String> {
     if name == "." || name == ".." {
         return Err("Invalid output filename.".to_string());
     }
+    // Reject characters Windows forbids in file names (plus control chars) on
+    // every platform, so an output created on macOS/Linux stays portable.
+    if name.chars().any(|c| matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|') || (c as u32) < 0x20) {
+        return Err("Output filename contains characters that aren't allowed: : * ? \" < > |".to_string());
+    }
+    if name.ends_with('.') || name.ends_with(' ') || name.starts_with(' ') {
+        return Err("Output filename can't start or end with a space or end with a dot.".to_string());
+    }
     Ok(())
 }
 
@@ -92,7 +100,7 @@ pub fn categorize_error(err: &str) -> String {
         || err.contains("ffmpeg transcode failed") || err.contains("No such file or directory: ffmpeg")
         || err.contains("No such file or directory: ffprobe")
     {
-        "ffmpeg is required but not installed. Install it with: brew install ffmpeg".to_string()
+        crate::binaries::ffmpeg_install_hint().to_string()
     } else if err.contains("No audio stream")
         || err.contains("Invalid data found when processing input")
         || err.contains("could not find codec")

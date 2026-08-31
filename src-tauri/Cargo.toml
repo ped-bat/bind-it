@@ -16,15 +16,10 @@ default-run = "bind-it"
 name = "bind_it_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-[features]
-# Dev-only batch CLI. Gated behind a feature so `tauri build` never compiles
-# it — an ungated bin lands inside the shipped .app bundle.
-cli = []
-
-[[bin]]
-name = "bind-it-cli"
-path = "src/bin/bind-it-cli.rs"
-required-features = ["cli"]
+# The batch CLI lives in examples/ rather than src/bin/ on purpose: Tauri's
+# bundler copies every [[bin]] target of this package into the .app, so an
+# ungated binary ships to users. Run it with:
+#   cargo run --release --example bind-it-cli -- <INPUT_DIR> [OPTIONS]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

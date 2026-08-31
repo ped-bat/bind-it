@@ -2,8 +2,10 @@
 
 Bind your audio file chapters into a single M4B.
 
-Bind it is a native desktop app that merges chapter files (MP3, M4A, M4B) into one
-M4B audio file with chapters, metadata, and cover art — ready for any player.
+Bind it is a native desktop app that merges chapter files (MP3, M4A, M4B, AAC,
+WAV, FLAC, WMA) into one audio file with chapters, metadata, and cover art —
+ready for any player. Output is `.m4b`, or `.mp3` when the source set is
+uniform MP3 and you keep the original codec.
 
 ## Features
 
@@ -34,8 +36,9 @@ In all three paths, chapter metadata and cover art are written into the output f
 
 ## System Requirements
 
-- **macOS** on Apple Silicon (arm64) — other platforms are planned but not yet tested
-- **ffmpeg** — must be installed and available on `PATH` (e.g. `brew install ffmpeg`)
+- **macOS** 11+ (Apple Silicon or Intel), **Windows** 10/11 (x86_64), or
+  **Linux** x86_64 (AppImage)
+- Nothing else — `ffmpeg` and `ffprobe` ship inside the app
 
 ## Development
 
@@ -44,16 +47,42 @@ and the [Tauri 2 CLI prerequisites](https://tauri.app/start/prerequisites/).
 
 ```bash
 npm install
+./scripts/fetch-binaries.sh   # download ffmpeg/ffprobe sidecars for your host
 npm run tauri dev
 ```
+
+The sidecars are not committed to the repository. `fetch-binaries.sh`
+downloads static builds and then runs `scripts/check-binaries.sh`, which
+rejects dynamically-linked binaries — a Homebrew ffmpeg copied into
+`src-tauri/binaries/` runs fine locally but fails on every machine without
+the same libraries installed.
 
 ## Build
 
 ```bash
+FETCH_ALL=1 ./scripts/fetch-binaries.sh   # all target triples + universal macOS
 npm run tauri build
 ```
 
-The build output (`.dmg`) will be in `src-tauri/target/release/bundle/`.
+Bundles land in `src-tauri/target/release/bundle/` (`.dmg`/`.app` on macOS,
+`.msi`/`.exe` on Windows, `.AppImage` on Linux). Tagging `v*` runs
+`.github/workflows/release.yml`, which builds all three platforms, signs and
+notarizes the macOS build, and uploads installers to a draft release.
+
+The batch CLI (`bind-it-cli`) is a development tool. It lives in
+`src-tauri/examples/` rather than `src/bin/`, because Tauri's bundler copies
+every declared binary target into the shipped app:
+
+```bash
+cargo run --release --example bind-it-cli -- <INPUT_DIR> [OPTIONS]
+```
+
+## Testing
+
+```bash
+cd src-tauri && cargo test --lib   # end-to-end merge tests on synthetic fixtures
+npm run check                      # svelte-check
+```
 
 ## Tech Stack
 
@@ -67,3 +96,6 @@ The build output (`.dmg`) will be in `src-tauri/target/release/bundle/`.
 ## License
 
 MIT — see [LICENSE](LICENSE). Copyright © 2026 Pedro Batista.
+
+Bundled `ffmpeg`/`ffprobe` binaries are GPL-licensed and distributed under
+their own terms — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

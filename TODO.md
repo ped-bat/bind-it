@@ -33,10 +33,35 @@
 - [X] Add it to new repository on my account
 - [ ] Delete bindery repository
 - [ ] Add website to the main repository?
+- [ ] Convert all audiobooks
+- [ ] Create landing page
+
+## Release readiness (from the Aug 2026 audit)
+
+Fixed on the `release-fixes` branch:
+
+- [X] ffmpeg sidecars were Homebrew-linked and broke on any other machine —
+      fetch script fixed (its Apple Silicon URL never worked), static builds,
+      guard script blocks regressions
+- [X] Universal macOS build needs lipo'd sidecars — done in fetch script
+- [X] Cmd/Ctrl+Backspace wiped the session while typing — guarded + confirmed
+- [X] Windows console windows on every ffmpeg call — CREATE_NO_WINDOW
+- [X] Illegal filename characters reached the OS — stripped and validated
+- [X] Drop errors broke the conversion state machine
+- [X] No drag-over feedback on Windows/Linux — now uses native Tauri events
+- [X] "brew install ffmpeg" shown on every platform — per-platform hints
+- [X] Dev CLI shipped inside the app bundle — behind a cargo feature
+- [X] No ffmpeg GPL notices — THIRD_PARTY_LICENSES.md bundled as a resource
+- [X] deb/rpm would collide with the distro's ffmpeg — AppImage only
+- [X] No test workflow — ci.yml runs tests, clippy, svelte-check, build
+- [X] Working tree uncommitted, README contradicted the product
+
+Still to do — these need machines and accounts, not code:
+
+- [ ] Dry-run the release workflow (`workflow_dispatch`) on all three platforms
+- [ ] Verify Developer ID signing + notarization on a clean Mac (the local
+      build is ad-hoc signed; Gatekeeper will reject it as-is)
 - [ ] Test fresh installation on another mac
 - [ ] Test installation on windows
 - [ ] Test installation on linux
-- [ ] Figure out app publishing
-- [ ] Convert all audiobooks
-- [ ] Create landing page
-- [ ] Publish website and app
+- [ ] Tag v1.0.0 and publish website + app

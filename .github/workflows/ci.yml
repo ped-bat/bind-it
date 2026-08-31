@@ -37,11 +37,11 @@ jobs:
 
       - name: cargo test
         working-directory: src-tauri
-        run: cargo test --lib --features cli
+        run: cargo test --lib
 
       - name: cargo clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets --features cli -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - uses: actions/setup-node@v4
         with:

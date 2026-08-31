@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "landing/**"
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "landing/**"
+      - "**.md"
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Rust integration tests drive real ffmpeg/ffprobe to generate
+      # synthetic fixtures and verify merge output.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --lib --features cli
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --features cli -- -D warnings
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: svelte-check
+        run: npm run check
+
+      - name: Frontend build
+        run: npx vite build

@@ -12,13 +12,13 @@
 	"app": {
 		"windows": [
 			{
-				"title": "",
+				"title": "Bind it",
 				"width": 860,
 				"height": 640,
 				"minWidth": 580,
 				"minHeight": 480,
 				"dragDropEnabled": true,
-				"focus": false
+				"focus": true
 			}
 		],
 		"security": {
@@ -27,11 +27,14 @@
 	},
 	"bundle": {
 		"active": true,
-		"targets": "all",
+		"targets": ["app", "dmg", "msi", "nsis", "appimage"],
 		"externalBin": [
 			"binaries/ffmpeg",
 			"binaries/ffprobe"
 		],
+		"resources": {
+			"../THIRD_PARTY_LICENSES.md": "THIRD_PARTY_LICENSES.md"
+		},
 		"icon": [
 			"icons/32x32.png",
 			"icons/128x128.png",

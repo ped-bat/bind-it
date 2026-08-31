@@ -37,6 +37,15 @@ host_triple() {
   fi
 }
 
+# Install a fetched binary, replacing any previous file even if it was
+# checked out read-only.
+install_bin() {
+  local src="$1" dest="$2"
+  rm -f "$dest"
+  cp "$src" "$dest"
+  chmod +x "$dest"
+}
+
 fetch_btbn() {
   # BtbN builds: single archive contains ffmpeg + ffprobe under bin/
   local triple="$1" url="$2" archive="$3"
@@ -56,9 +65,8 @@ fetch_btbn() {
   ffmpeg_src="$(find "$extract_dir" -type f -name "ffmpeg$ext_suffix" | head -1)"
   ffprobe_src="$(find "$extract_dir" -type f -name "ffprobe$ext_suffix" | head -1)"
   [[ -z "$ffmpeg_src" || -z "$ffprobe_src" ]] && { echo "Binaries not found in $archive"; return 1; }
-  cp "$ffmpeg_src"  "$OUT_DIR/ffmpeg-$triple$ext_suffix"
-  cp "$ffprobe_src" "$OUT_DIR/ffprobe-$triple$ext_suffix"
-  chmod +x "$OUT_DIR/ffmpeg-$triple$ext_suffix" "$OUT_DIR/ffprobe-$triple$ext_suffix"
+  install_bin "$ffmpeg_src"  "$OUT_DIR/ffmpeg-$triple$ext_suffix"
+  install_bin "$ffprobe_src" "$OUT_DIR/ffprobe-$triple$ext_suffix"
 }
 
 fetch_evermeet() {
@@ -71,8 +79,7 @@ fetch_evermeet() {
     local extract_dir="$TMP_DIR/extract-$bin-$triple"
     mkdir -p "$extract_dir"
     unzip -q "$zip_path" -d "$extract_dir"
-    cp "$extract_dir/$bin" "$OUT_DIR/$bin-$triple"
-    chmod +x "$OUT_DIR/$bin-$triple"
+    install_bin "$extract_dir/$bin" "$OUT_DIR/$bin-$triple"
   done
 }
 
@@ -82,15 +89,14 @@ fetch_osxexperts() {
   echo "→ $triple"
   for bin in ffmpeg ffprobe; do
     local zip_path="$TMP_DIR/$bin-$triple.zip"
-    curl -fsSL -o "$zip_path" "https://www.osxexperts.net/$bin71arm.zip"
+    curl -fsSL -o "$zip_path" "https://www.osxexperts.net/${bin}71arm.zip"
     local extract_dir="$TMP_DIR/extract-$bin-$triple"
     mkdir -p "$extract_dir"
     unzip -q "$zip_path" -d "$extract_dir"
     local src
     src="$(find "$extract_dir" -type f -name "$bin" | head -1)"
     [[ -z "$src" ]] && { echo "$bin not found in archive"; return 1; }
-    cp "$src" "$OUT_DIR/$bin-$triple"
-    chmod +x "$OUT_DIR/$bin-$triple"
+    install_bin "$src" "$OUT_DIR/$bin-$triple"
   done
 }
 
@@ -119,6 +125,23 @@ fetch_for_triple() {
   esac
 }
 
+# Tauri's `--target universal-apple-darwin` looks for sidecars suffixed
+# `-universal-apple-darwin`; they don't exist upstream, so lipo the two
+# per-arch downloads together whenever both are present (macOS only).
+make_universal_macos() {
+  command -v lipo >/dev/null 2>&1 || return 0
+  for bin in ffmpeg ffprobe; do
+    local arm="$OUT_DIR/$bin-aarch64-apple-darwin"
+    local x86="$OUT_DIR/$bin-x86_64-apple-darwin"
+    if [[ -f "$arm" && -f "$x86" ]]; then
+      echo "→ lipo $bin-universal-apple-darwin"
+      rm -f "$OUT_DIR/$bin-universal-apple-darwin"
+      lipo -create "$arm" "$x86" -output "$OUT_DIR/$bin-universal-apple-darwin"
+      chmod +x "$OUT_DIR/$bin-universal-apple-darwin"
+    fi
+  done
+}
+
 if [[ "${FETCH_ALL:-0}" == "1" ]]; then
   for t in \
     aarch64-apple-darwin \
@@ -129,6 +152,7 @@ if [[ "${FETCH_ALL:-0}" == "1" ]]; then
   do
     fetch_for_triple "$t"
   done
+  make_universal_macos
 else
   HOST="$(host_triple)"
   [[ "$HOST" == "unknown" ]] && { echo "Could not detect host triple; pass FETCH_ALL=1 or install rustc"; exit 1; }
@@ -138,3 +162,6 @@ fi
 echo
 echo "✓ Done. Binaries in: $OUT_DIR"
 ls -la "$OUT_DIR"
+
+# Fail fast if anything fetched is not distributable.
+"$ROOT/scripts/check-binaries.sh"

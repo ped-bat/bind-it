@@ -76,9 +76,11 @@ jobs:
         shell: bash
         run: ./scripts/fetch-binaries.sh
 
-      - name: Verify sidecars present
+      - name: Verify sidecars are present and self-contained
         shell: bash
-        run: ls -la src-tauri/binaries
+        run: |
+          ls -la src-tauri/binaries
+          ./scripts/check-binaries.sh
 
       - name: Install npm dependencies
         run: npm ci

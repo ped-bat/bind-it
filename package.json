@@ -7,7 +7,8 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "preview": "tauri build --debug",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json",
+    "tauri": "tauri"
   },
   "license": "MIT",
   "dependencies": {

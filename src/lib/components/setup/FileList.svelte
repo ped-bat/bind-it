@@ -6,7 +6,7 @@
   import FileListItem from "$lib/components/setup/FileListItem.svelte";
   import { fileStore } from "$lib/stores/files.svelte.js";
   import { appStore } from "$lib/stores/app.svelte.js";
-  import { addFilesFromBrowse, addFilesFromFolder } from "$lib/services/actions.js";
+  import { addFilesFromBrowse, addFilesFromFolder, clearAllWithConfirm } from "$lib/services/actions.js";
   import { springFlip, startReorderDrag } from "$lib/services/dragReorder.js";
 
   let focusedFileIndex = $state(-1);
@@ -23,6 +23,9 @@
   function dragStart(index, e) {
     if (!/** @type {HTMLElement} */ (e.target)?.closest('.drag-handle')) return;
     e.preventDefault();
+    // Tear down any previous drag before starting a new one, so stale
+    // move/up listeners can't stack and fight over the state.
+    cleanupDrag?.();
     cleanupDrag = startReorderDrag({
       index,
       event: e,
@@ -79,7 +82,7 @@
       <Button variant="secondary" size="sm" onclick={addFilesFromFolder}>
         {#snippet children()}+ Folder{/snippet}
       </Button>
-      <Button variant="secondary" size="sm" onclick={() => appStore.clearAll()}>
+      <Button variant="secondary" size="sm" onclick={clearAllWithConfirm}>
         {#snippet children()}Clear{/snippet}
       </Button>
     </div>

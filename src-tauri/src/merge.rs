@@ -13,10 +13,27 @@ use crate::util::{
 };
 use std::collections::HashMap;
 use std::fs;
+use std::hash::Hash;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use tauri::Emitter;
+
+/// Returns the most frequent value across `iter` (filtering out items mapped
+/// to `0`), or `default` if no items are present.
+fn most_common_nonzero<I, T>(iter: I, default: T) -> T
+where
+    I: IntoIterator<Item = T>,
+    T: Eq + Hash + Copy + Default + PartialEq,
+{
+    let mut counts: HashMap<T, u32> = HashMap::new();
+    for v in iter {
+        if v != T::default() {
+            *counts.entry(v).or_insert(0) += 1;
+        }
+    }
+    counts.into_iter().max_by_key(|&(_, c)| c).map(|(v, _)| v).unwrap_or(default)
+}
 
 /// Core merge logic, callable without Tauri. The `emit` closure receives progress updates.
 pub fn merge_audio_files_core<F>(config: MergeConfig, emit: F) -> Result<String, String>
@@ -33,33 +50,18 @@ where
         validate_concat_path(&file.path)?;
     }
 
-    if CANCEL_FLAG.load(Ordering::Relaxed) {
+    if CANCEL_FLAG.load(Ordering::SeqCst) {
         return Err("Cancelled by user".to_string());
     }
 
     let file_paths: Vec<String> = config.files.iter().map(|f| f.path.clone()).collect();
-    let (probed, durations) = if let Some(ref cached) = config.durations {
-        if cached.len() == config.files.len() {
-            let probed = probe_all_files(file_paths)?;
-            if probed.is_empty() {
-                return Err("No valid audio files to merge.".to_string());
-            }
-            (probed, cached.clone())
-        } else {
-            let probed = probe_all_files(file_paths)?;
-            if probed.is_empty() {
-                return Err("No valid audio files to merge.".to_string());
-            }
-            let durations: Vec<f64> = probed.iter().map(|f| f.duration).collect();
-            (probed, durations)
-        }
-    } else {
-        let probed = probe_all_files(file_paths)?;
-        if probed.is_empty() {
-            return Err("No valid audio files to merge.".to_string());
-        }
-        let durations: Vec<f64> = probed.iter().map(|f| f.duration).collect();
-        (probed, durations)
+    let probed = probe_all_files(file_paths)?;
+    if probed.is_empty() {
+        return Err("No valid audio files to merge.".to_string());
+    }
+    let durations: Vec<f64> = match config.durations.as_ref() {
+        Some(cached) if cached.len() == probed.len() => cached.clone(),
+        _ => probed.iter().map(|f| f.duration).collect(),
     };
 
     let force = config.force_transcode;
@@ -116,25 +118,8 @@ where
     let bitrate_arg = format!("{}k", config.bitrate);
 
     if want_alac {
-        let mut sr_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.sample_rate > 0 { *sr_counts.entry(p.sample_rate).or_insert(0) += 1; }
-        }
-        let target_sr = sr_counts
-            .into_iter()
-            .max_by_key(|&(_, c)| c)
-            .map(|(sr, _)| sr)
-            .unwrap_or(44_100);
-
-        let mut ch_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.channels > 0 { *ch_counts.entry(p.channels).or_insert(0) += 1; }
-        }
-        let target_ch = ch_counts
-            .into_iter()
-            .max_by_key(|&(_, c)| c)
-            .map(|(ch, _)| ch)
-            .unwrap_or(2);
+        let target_sr = most_common_nonzero(probed.iter().map(|p| p.sample_rate), 44_100);
+        let target_ch = most_common_nonzero(probed.iter().map(|p| p.channels), 2);
         let target_ch_str = target_ch.to_string();
 
         emit(Stage::Transcoding, 5.0, "Encoding to ALAC (lossless)");
@@ -218,15 +203,7 @@ where
         )?;
 
     } else if all_aac {
-        let mut sr_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.sample_rate > 0 { *sr_counts.entry(p.sample_rate).or_insert(0) += 1; }
-        }
-        let target_sr = sr_counts
-            .into_iter()
-            .max_by_key(|&(_, count)| count)
-            .map(|(sr, _)| sr)
-            .unwrap_or(44_100);
+        let target_sr = most_common_nonzero(probed.iter().map(|p| p.sample_rate), 44_100);
 
         emit(Stage::Transcoding, 5.0, "Normalizing sample rates");
 
@@ -255,6 +232,7 @@ where
                 all_paths.push(PathBuf::from(&file.path));
             }
         }
+        debug_assert!(transcode_map.is_empty(), "leftover transcoded files: {:?}", transcode_map.keys());
 
         emit(Stage::Merging, 90.0, "Concatenating normalized files");
         let intermediate = concat_aac_files(&all_paths, tmp_dir.path())?;
@@ -353,25 +331,8 @@ where
     } else if all_mp3 {
         // Non-uniform MP3: re-encode outliers to MP3 at mode sample rate / channels,
         // then lossless-concat the full set and mux into M4B. Majority stays bit-perfect.
-        let mut sr_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.sample_rate > 0 { *sr_counts.entry(p.sample_rate).or_insert(0) += 1; }
-        }
-        let target_sr = sr_counts
-            .into_iter()
-            .max_by_key(|&(_, count)| count)
-            .map(|(sr, _)| sr)
-            .unwrap_or(44_100);
-
-        let mut ch_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.channels > 0 { *ch_counts.entry(p.channels).or_insert(0) += 1; }
-        }
-        let target_ch = ch_counts
-            .into_iter()
-            .max_by_key(|&(_, count)| count)
-            .map(|(ch, _)| ch)
-            .unwrap_or(2);
+        let target_sr = most_common_nonzero(probed.iter().map(|p| p.sample_rate), 44_100);
+        let target_ch = most_common_nonzero(probed.iter().map(|p| p.channels), 2);
         let target_ch_str = target_ch.to_string();
 
         emit(Stage::Transcoding, 5.0, "Re-encoding outlier MP3 files");
@@ -408,6 +369,7 @@ where
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        debug_assert!(transcode_map.is_empty(), "leftover transcoded files: {:?}", transcode_map.keys());
 
         let stripped: Vec<Result<PathBuf, String>> = resolved.par_iter()
             .enumerate()
@@ -435,9 +397,14 @@ where
         let intermediate = tmp_dir.path().join("merged.mp3");
         let concat_list_str = path_str(&concat_list)?;
         let intermediate_str = path_str(&intermediate)?.to_string();
+        let total: f64 = durations.iter().sum();
+        let pct_start = 88.0_f64;
+        let pct_end = 91.0_f64;
         run_ffmpeg_with_progress(
             &[
-                "-y", "-f", "concat", "-safe", "0",
+                "-y",
+                "-progress", "pipe:1",
+                "-f", "concat", "-safe", "0",
                 "-i", concat_list_str,
                 "-map", "0:a",
                 "-c", "copy",
@@ -446,7 +413,13 @@ where
                 "-fflags", "+bitexact",
                 &intermediate_str,
             ],
-            0.0, |_| {}, "concat",
+            total,
+            |secs| {
+                let frac = if total > 0.0 { (secs / total).min(1.0) } else { 0.0 };
+                let pct = pct_start + (pct_end - pct_start) * frac;
+                emit(Stage::Merging, pct, "Concatenating MP3 frames");
+            },
+            "concat",
         )?;
 
         emit(Stage::Chapters, 92.0, "Adding chapter metadata");
@@ -516,25 +489,8 @@ where
         )?;
 
     } else if all_alac {
-        let mut sr_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.sample_rate > 0 { *sr_counts.entry(p.sample_rate).or_insert(0) += 1; }
-        }
-        let target_sr = sr_counts
-            .into_iter()
-            .max_by_key(|&(_, count)| count)
-            .map(|(sr, _)| sr)
-            .unwrap_or(44_100);
-
-        let mut ch_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.channels > 0 { *ch_counts.entry(p.channels).or_insert(0) += 1; }
-        }
-        let target_ch = ch_counts
-            .into_iter()
-            .max_by_key(|&(_, count)| count)
-            .map(|(ch, _)| ch)
-            .unwrap_or(2);
+        let target_sr = most_common_nonzero(probed.iter().map(|p| p.sample_rate), 44_100);
+        let target_ch = most_common_nonzero(probed.iter().map(|p| p.channels), 2);
         let target_ch_str = target_ch.to_string();
 
         emit(Stage::Transcoding, 5.0, "Normalizing ALAC files");
@@ -564,6 +520,7 @@ where
                 all_paths.push(PathBuf::from(&file.path));
             }
         }
+        debug_assert!(transcode_map.is_empty(), "leftover transcoded files: {:?}", transcode_map.keys());
 
         emit(Stage::Merging, 90.0, "Concatenating normalized files");
         let intermediate = concat_aac_files(&all_paths, tmp_dir.path())?;
@@ -580,15 +537,7 @@ where
         )?;
 
     } else {
-        let mut sr_counts: HashMap<u32, u32> = HashMap::new();
-        for p in &probed {
-            if p.sample_rate > 0 { *sr_counts.entry(p.sample_rate).or_insert(0) += 1; }
-        }
-        let target_sr = sr_counts
-            .into_iter()
-            .max_by_key(|&(_, count)| count)
-            .map(|(sr, _)| sr)
-            .unwrap_or(44_100);
+        let target_sr = most_common_nonzero(probed.iter().map(|p| p.sample_rate), 44_100);
 
         if force {
             emit(Stage::Transcoding, 5.0, "Transcoding all files to AAC");
@@ -636,6 +585,7 @@ where
                 all_paths.push(PathBuf::from(&file.path));
             }
         }
+        debug_assert!(transcode_map.is_empty(), "leftover transcoded files: {:?}", transcode_map.keys());
 
         emit(Stage::Merging, 90.0, "Concatenating all files");
         let intermediate = concat_aac_files(&all_paths, tmp_dir.path())?;
@@ -684,10 +634,16 @@ pub fn merge_audio_files(app: tauri::AppHandle, config: MergeConfig) -> Result<(
 
         match result {
             Ok(Ok(path)) => {
-                if CANCEL_FLAG.load(Ordering::Relaxed) {
+                if CANCEL_FLAG.load(Ordering::SeqCst) {
                     let _ = app.emit("merge-cancelled", ());
                 } else {
-                    let size_bytes = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                    let size_bytes = match fs::metadata(&path) {
+                        Ok(m) => m.len(),
+                        Err(e) => {
+                            eprintln!("[bind-it] failed to stat output {}: {}", path, e);
+                            0
+                        }
+                    };
                     let _ = app.emit("merge-complete", serde_json::json!({
                         "path": path,
                         "size_bytes": size_bytes,
@@ -704,6 +660,7 @@ pub fn merge_audio_files(app: tauri::AppHandle, config: MergeConfig) -> Result<(
                 }
             }
             Err(panic) => {
+                eprintln!("[bind-it] merge panicked: {:?}", panic);
                 let msg = if let Some(s) = panic.downcast_ref::<&'static str>() {
                     format!("Internal error: {}", s)
                 } else if let Some(s) = panic.downcast_ref::<String>() {
@@ -711,7 +668,6 @@ pub fn merge_audio_files(app: tauri::AppHandle, config: MergeConfig) -> Result<(
                 } else {
                     "Internal error: unexpected failure during conversion".to_string()
                 };
-                eprintln!("[bind-it] merge panicked: {}", msg);
                 let _ = app.emit("merge-error", msg);
             }
         }

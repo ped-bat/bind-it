@@ -133,8 +133,9 @@
     font-variant-numeric: tabular-nums;
     flex-shrink: 0;
     text-align: right;
+    white-space: nowrap;
   }
 
-  .file-duration { width: 40px; }
-  .file-size { width: 56px; }
+  .file-duration { min-width: 40px; }
+  .file-size { min-width: 56px; }
 </style>

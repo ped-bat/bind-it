@@ -31,7 +31,7 @@
 
 <div class="complete-screen" in:fade={{ duration: 300 }}>
   <header class="complete-header">
-    <AppHeader size="sm" />
+    <AppHeader />
   </header>
 
   <div class="complete-content">
@@ -46,6 +46,12 @@
       <div class="complete-details">
         <p class="complete-filename">{conversionStore.completionData.filename}</p>
         <div class="complete-stats">
+          <span>{conversionStore.completionData.containerLabel}</span>
+          {#if conversionStore.completionData.codecLabel !== conversionStore.completionData.containerLabel}
+            <span class="complete-stat-sep">&middot;</span>
+            <span>{conversionStore.completionData.codecLabel}</span>
+          {/if}
+          <span class="complete-stat-sep">&middot;</span>
           <span>{conversionStore.completionData.fileCount} file{conversionStore.completionData.fileCount !== 1 ? "s" : ""}</span>
           <span class="complete-stat-sep">&middot;</span>
           <span>{formatDurationHuman(conversionStore.completionData.totalDuration)}</span>

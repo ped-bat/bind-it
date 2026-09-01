@@ -74,7 +74,11 @@ export function startReorderDrag({ index, event, itemSelector, containerSelector
       const otherRect = other.getBoundingClientRect();
       const midY = otherRect.top + otherRect.height / 2;
 
-      if ((idx > dragged && dragMidY > midY) || (idx < dragged && dragMidY < midY)) {
+      // `>=` / `<=` so the drop fires when midpoints exactly coincide. With
+      // strict comparisons, dragging to position 0 (or the last slot) fails
+      // because the clamped dragged midpoint equals the boundary item's
+      // midpoint exactly — equal but not strictly less/greater.
+      if ((idx > dragged && dragMidY >= midY) || (idx < dragged && dragMidY <= midY)) {
         onReorder(dragged, idx);
         dragStartY += (idx - dragged) * itemH;
         offsetY = me.clientY - dragStartY;
@@ -90,11 +94,20 @@ export function startReorderDrag({ index, event, itemSelector, containerSelector
   const onUp = () => {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+    window.removeEventListener("blur", onUp);
+    try { el.releasePointerCapture(event.pointerId); } catch { /* already released */ }
     onUpdate({ draggedIndex: null, dropTargetIndex: null, offsetY: 0 });
   };
 
+  // Capture the pointer so a release outside the window still ends the drag,
+  // and treat pointercancel (touch/pen interruption) and window blur as
+  // drag-end — otherwise the item stays stranded mid-drag with live listeners.
+  try { el.setPointerCapture(event.pointerId); } catch { /* unsupported */ }
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
+  window.addEventListener("blur", onUp);
 
   return onUp;
 }

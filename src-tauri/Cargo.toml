@@ -1,8 +1,9 @@
 [package]
 name = "bind-it"
-version = "0.1.0"
+version = "1.0.0"
 description = "Bind audio files into a single M4B"
-authors = ["Jan Petrov <jan.x.petrov@gmail.com>"]
+authors = ["Pedro Batista <me@pedrobatista.pt>"]
+license = "MIT"
 edition = "2021"
 default-run = "bind-it"
 
@@ -14,6 +15,11 @@ default-run = "bind-it"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "bind_it_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# The batch CLI lives in examples/ rather than src/bin/ on purpose: Tauri's
+# bundler copies every [[bin]] target of this package into the .app, so an
+# ungated binary ships to users. Run it with:
+#   cargo run --release --example bind-it-cli -- <INPUT_DIR> [OPTIONS]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

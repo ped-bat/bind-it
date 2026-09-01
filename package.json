@@ -1,6 +1,6 @@
 {
   "name": "bind-it",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Desktop app for merging audio files into a single M4B with chapters, metadata, and cover art",
   "type": "module",
   "scripts": {

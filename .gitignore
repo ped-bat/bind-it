@@ -3,6 +3,8 @@ target/
 dist/
 build/
 .svelte-kit/
+# Fetched ffmpeg sidecars — never commit binaries; run scripts/fetch-binaries.sh
+src-tauri/binaries/
 .DS_Store
 *.swp
 .env

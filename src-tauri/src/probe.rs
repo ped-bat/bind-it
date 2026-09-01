@@ -120,11 +120,18 @@ pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
         .as_str()
         .and_then(|b| b.parse::<u64>().ok());
 
+    // ffmpeg/ffprobe normalizes tag case inconsistently across containers and
+    // demuxers (MP3 ID3 → lower, MP4 → mixed, etc.). Match case-insensitively
+    // by scanning the tags object once instead of guessing common variants.
     let get_tag = |key: &str| -> Option<String> {
-        tags[key]
-            .as_str()
-            .or_else(|| tags[key.to_uppercase().as_str()].as_str())
-            .map(|s| s.to_string())
+        let target = key.to_lowercase();
+        tags.as_object()?.iter().find_map(|(k, v)| {
+            if k.to_lowercase() == target {
+                v.as_str().map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
     };
 
     let filename = Path::new(path)

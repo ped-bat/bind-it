@@ -19,7 +19,7 @@
 
 <div class="converting-screen" in:fade={{ duration: 300 }}>
   <header class="converting-header">
-    <AppHeader size="sm" animation="pulse" loop label="Binding" />
+    <AppHeader animation="pulse" loop label="Binding" />
   </header>
 
   <div class="converting-content">

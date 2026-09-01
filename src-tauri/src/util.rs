@@ -26,6 +26,14 @@ pub fn validate_filename(name: &str) -> Result<(), String> {
     if name == "." || name == ".." {
         return Err("Invalid output filename.".to_string());
     }
+    // Reject characters Windows forbids in file names (plus control chars) on
+    // every platform, so an output created on macOS/Linux stays portable.
+    if name.chars().any(|c| matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|') || (c as u32) < 0x20) {
+        return Err("Output filename contains characters that aren't allowed: : * ? \" < > |".to_string());
+    }
+    if name.ends_with('.') || name.ends_with(' ') || name.starts_with(' ') {
+        return Err("Output filename can't start or end with a space or end with a dot.".to_string());
+    }
     Ok(())
 }
 
@@ -92,7 +100,7 @@ pub fn categorize_error(err: &str) -> String {
         || err.contains("ffmpeg transcode failed") || err.contains("No such file or directory: ffmpeg")
         || err.contains("No such file or directory: ffprobe")
     {
-        "ffmpeg is required but not installed. Install it with: brew install ffmpeg".to_string()
+        crate::binaries::ffmpeg_install_hint().to_string()
     } else if err.contains("No audio stream")
         || err.contains("Invalid data found when processing input")
         || err.contains("could not find codec")
@@ -139,7 +147,7 @@ pub fn clean_chapter_name(filename: &str) -> String {
     // Pattern A: "Chapter NN - …", "Part NN - …", "Track NN - …", "Section NN - …".
     // Always strip — the leading word is filler.
     static WORD_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*").unwrap()
+        Regex::new(r"^(?:Chapter|Part|Track|Section)\s*\d+\s*[-–—.]\s*").expect("WORD_PREFIX regex")
     });
     // Pattern B: two numeric prefixes back-to-back, e.g. "01 - 02 - Title" or
     // "01 - 01 - Title". The FIRST one is the unique track/index across files;
@@ -147,11 +155,11 @@ pub fn clean_chapter_name(filename: &str) -> String {
     // Keep the first, drop the second — otherwise sets like
     // "NN - 01 - Author - Album" collapse to identical chapter titles.
     static DOUBLE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^(\d{1,3}\s*[-–—.]\s*)\d{1,3}\s*[-–—.]\s*").unwrap()
+        Regex::new(r"^(\d{1,3}\s*[-–—.]\s*)\d{1,3}\s*[-–—.]\s*").expect("DOUBLE_PREFIX regex")
     });
     // Pattern C: a single numeric prefix, e.g. "01 - Title". Strip it.
     static SINGLE_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^\d{1,3}\s*[-–—.]\s*").unwrap()
+        Regex::new(r"^\d{1,3}\s*[-–—.]\s*").expect("SINGLE_PREFIX regex")
     });
 
     let name = Path::new(filename)

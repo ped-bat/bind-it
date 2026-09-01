@@ -4,6 +4,12 @@ class FileStore {
   /** @type {any[]} */
   items = $state([]);
   probing = $state(false);
+  // Concurrent add() calls each own a slot; the spinner only stops when the
+  // last one finishes.
+  #probesInFlight = 0;
+  // Monotonic token so an older #refreshMergePlan can't overwrite a newer
+  // one when responses resolve out of order.
+  #planToken = 0;
   /** @type {string | null} */
   coverArt = $state(null);
   /** @type {string | null} */
@@ -32,6 +38,7 @@ class FileStore {
    */
   async add(paths, opts) {
     const { folderName = null, setError, setWarning, announce } = opts;
+    this.#probesInFlight++;
     this.probing = true;
     try {
       const result = await probeFiles(paths);
@@ -47,11 +54,17 @@ class FileStore {
         announce(`${newFiles.length} file${newFiles.length !== 1 ? "s" : ""} added`);
       }
 
+      // Cover art is a nice-to-have: a failure here must not abort the add
+      // or skip the merge-plan refresh.
       if (!this.coverArt) {
-        const art = await getCoverArt(this.items.map(f => f.path));
-        if (art) {
-          this.coverArt = art.data_uri;
-          this.coverArtPath = art.file_path;
+        try {
+          const art = await getCoverArt(this.items.map(f => f.path));
+          if (art) {
+            this.coverArt = art.data_uri;
+            this.coverArtPath = art.file_path;
+          }
+        } catch (e) {
+          console.warn("getCoverArt failed:", e);
         }
       }
 
@@ -61,7 +74,8 @@ class FileStore {
       setError(String(e));
       return null;
     } finally {
-      this.probing = false;
+      this.#probesInFlight--;
+      if (this.#probesInFlight === 0) this.probing = false;
     }
   }
 
@@ -85,13 +99,19 @@ class FileStore {
   }
 
   async #refreshMergePlan() {
+    const token = ++this.#planToken;
     if (this.items.length < 1) { this.mergePlan = null; return; }
     try {
-      this.mergePlan = await getMergePlan(this.items.map(f => ({
+      const plan = await getMergePlan(this.items.map(f => ({
         path: f.path, codec: f.codec, sample_rate: f.sample_rate,
         channels: f.channels, duration: f.duration,
       })));
-    } catch { this.mergePlan = null; }
+      if (token === this.#planToken) this.mergePlan = plan;
+    } catch (e) {
+      // Keep the previous plan rather than blanking the Quality panel with
+      // no explanation; the merge itself recomputes everything backend-side.
+      console.warn("getMergePlan failed:", e);
+    }
   }
 
   clear() {

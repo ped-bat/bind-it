@@ -73,12 +73,40 @@ fn find_binary(name: &str) -> String {
 pub static FFMPEG_PATH: LazyLock<String> = LazyLock::new(|| find_binary("ffmpeg"));
 pub static FFPROBE_PATH: LazyLock<String> = LazyLock::new(|| find_binary("ffprobe"));
 
+// On Windows a GUI-subsystem app still spawns children with visible consoles;
+// CREATE_NO_WINDOW suppresses them. Probing/transcoding runs many ffmpeg
+// processes in parallel, so without this flag the screen fills with flashing
+// console windows.
+fn command(path: &str) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 pub fn ffmpeg() -> Command {
-    Command::new(FFMPEG_PATH.as_str())
+    command(FFMPEG_PATH.as_str())
 }
 
 pub fn ffprobe() -> Command {
-    Command::new(FFPROBE_PATH.as_str())
+    command(FFPROBE_PATH.as_str())
+}
+
+/// User-facing hint for when ffmpeg/ffprobe can't be started. The bundled
+/// sidecars make this rare, so the likeliest cause is a broken install.
+pub fn ffmpeg_install_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "ffmpeg could not be started. Try reinstalling Bind it, or install ffmpeg with: brew install ffmpeg"
+    } else if cfg!(windows) {
+        "ffmpeg could not be started. Try reinstalling Bind it, or install ffmpeg from ffmpeg.org and add it to PATH."
+    } else {
+        "ffmpeg could not be started. Try reinstalling Bind it, or install ffmpeg with your package manager (e.g. sudo apt install ffmpeg)."
+    }
 }
 
 // ── AAC encoder detection ────────────────────────────────────────────────────

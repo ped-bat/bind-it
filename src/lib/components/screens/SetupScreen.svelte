@@ -10,18 +10,7 @@
   import { fileStore } from "$lib/stores/files.svelte.js";
   import { appStore } from "$lib/stores/app.svelte.js";
   import { conversionStore } from "$lib/stores/conversion.svelte.js";
-  import { confirmAsk } from "$lib/services/tauri.js";
-
-  async function handleCancel() {
-    if (fileStore.count > 0) {
-      const ok = await confirmAsk(
-        `Discard ${fileStore.count} chapter${fileStore.count !== 1 ? "s" : ""} and metadata?`,
-        { title: "Discard changes", okLabel: "Discard", cancelLabel: "Keep" },
-      );
-      if (!ok) return;
-    }
-    appStore.clearAll();
-  }
+  import { clearAllWithConfirm } from "$lib/services/actions.js";
 </script>
 
 <ErrorBanner />
@@ -30,7 +19,7 @@
   <DropZone />
 {:else}
   <div class="content">
-    <AppHeader size="sm" />
+    <AppHeader />
 
     <FileList />
 
@@ -44,17 +33,17 @@
   </div>
 
   <div class="convert-section">
-    <Button variant="secondary" size="lg" flex onclick={handleCancel}>
+    <Button variant="secondary" size="lg" flex onclick={clearAllWithConfirm}>
       {#snippet children()}Cancel{/snippet}
     </Button>
     <Button
       variant="primary"
       size="lg"
       flex
-      disabled={fileStore.count < 1 || !appStore.ffmpegOk}
+      disabled={fileStore.count < 1 || !appStore.ffmpegOk || fileStore.probing}
       onclick={() => conversionStore.start()}
     >
-      {#snippet children()}Bind it!{/snippet}
+      {#snippet children()}{fileStore.probing ? "Reading files…" : "Bind it!"}{/snippet}
     </Button>
   </div>
 {/if}

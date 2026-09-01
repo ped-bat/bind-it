@@ -7,24 +7,15 @@
   import { addFilesFromBrowse, addFilesFromFolder } from "$lib/services/actions.js";
 
   let stillProbing = $state(false);
-  /** @type {ReturnType<typeof setTimeout> | null} */
-  let probingTimer = null;
 
   $effect(() => {
     if (fileStore.probing && fileStore.count === 0) {
       stillProbing = false;
-      probingTimer = setTimeout(() => { stillProbing = true; }, 10000);
-    } else {
-      stillProbing = false;
-      if (probingTimer) { clearTimeout(probingTimer); probingTimer = null; }
+      const timer = setTimeout(() => { stillProbing = true; }, 10000);
+      return () => clearTimeout(timer);
     }
+    stillProbing = false;
   });
-
-  /** @param {DragEvent} e */
-  function handleDrop(e) {
-    e.preventDefault();
-    appStore.dragOver = false;
-  }
 </script>
 
 {#if fileStore.probing && fileStore.count === 0}
@@ -36,17 +27,17 @@
     </p>
   </div>
 {:else}
+  <!-- Hover state comes from Tauri's native drag-drop events (see
+       setupListeners) — DOM drag events don't fire on Windows/Linux
+       webviews when native drag-drop is enabled. -->
   <div
     class="drop-zone"
     in:fade={{ duration: 200, delay: 100 }}
     class:drag-over={appStore.dragOver}
     role="region"
     aria-label="Drop audio files or folders here"
-    ondragover={(e) => { e.preventDefault(); appStore.dragOver = true; }}
-    ondragleave={() => appStore.dragOver = false}
-    ondrop={handleDrop}
   >
-    <AppHeader size="md" animation="intro" />
+    <AppHeader animation="intro" />
     <p class="drop-title drop-title-spaced">Drop files or folders here</p>
     <p class="drop-subtitle">MP3, M4A, M4B, AAC, WAV, FLAC, WMA</p>
     <div class="drop-buttons">

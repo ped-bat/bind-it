@@ -37,9 +37,12 @@ pub fn run() {
             resolve_audio_paths,
             check_ffmpeg,
         ])
-        .setup(|app| {
+        // `_app` rather than `app`: the only consumer is the macOS menu
+        // installer, so on Windows and Linux the binding is compiled out and
+        // an un-prefixed name trips `unused_variables`.
+        .setup(|_app| {
             #[cfg(target_os = "macos")]
-            install_macos_menu(app)?;
+            install_macos_menu(_app)?;
             Ok(())
         })
         .run(tauri::generate_context!())

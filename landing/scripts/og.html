@@ -1,0 +1,73 @@
+<!doctype html><meta charset="utf-8">
+<style>
+@font-face{font-family:IS;src:url('../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2') format('woff2');font-weight:400}
+@font-face{font-family:IS;src:url('../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2') format('woff2');font-weight:400;font-style:italic}
+@font-face{font-family:IN;src:url('../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2') format('woff2');font-weight:400}
+@font-face{font-family:IN;src:url('../node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2') format('woff2');font-weight:500}
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:630px;background:#131211;color:#EDECEA;font-family:IN,sans-serif;
+     display:flex;align-items:center;gap:64px;padding:0 76px;overflow:hidden;position:relative}
+body::before{content:"";position:absolute;inset:-40% -10% auto 30%;height:140%;
+     background:radial-gradient(ellipse 42% 46% at 60% 12%,rgba(212,137,58,.17),transparent 68%)}
+.l{position:relative;width:560px;flex:none}
+.mark{display:flex;align-items:center;gap:12px;margin-bottom:30px}
+.mark svg{width:34px;height:25px;color:#D4893A}
+.mark span{font-family:IS;font-size:29px;letter-spacing:-.01em}
+h1{font-family:IS;font-weight:400;font-size:63px;line-height:1.03;letter-spacing:-.028em}
+h1 em{font-style:italic;color:#E3A05C}
+p{margin-top:22px;font-size:20px;line-height:1.5;color:#A19B93;max-width:30ch}
+.meta{margin-top:34px;display:flex;gap:10px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#7C7670}
+.meta b{font-weight:400;padding:6px 12px;border:1px solid #2C2A27;border-radius:999px;color:#A19B93}
+.r{position:relative;flex:1;background:#1A1918;border:1px solid #2C2A27;border-radius:16px;padding:20px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.hd{display:flex;justify-content:space-between;font-family:ui-monospace,Menlo,monospace;font-size:11px;
+    letter-spacing:.12em;text-transform:uppercase;color:#7C7670;padding:0 2px 14px}
+.stage{position:relative;padding-left:35px}
+.stage::before{content:"";position:absolute;left:14px;top:6px;bottom:-16px;width:2px;border-radius:1px;background:#D4893A}
+ol{display:flex;flex-direction:column;gap:5px}
+li{position:relative;list-style:none;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;
+   padding:9px 12px;border:1px solid #2C2A27;border-radius:4px;background:#242320;font-size:13.5px}
+li::before{content:"";position:absolute;left:-21px;top:50%;width:21px;height:2px;background:#D4893A;opacity:.45}
+li b{font-family:ui-monospace,Menlo,monospace;font-size:11px;font-weight:400;color:#7C7670}
+li span{color:#A19B93}
+li i{font-family:ui-monospace,Menlo,monospace;font-style:normal;font-size:11px;color:#7C7670}
+.out{display:flex;align-items:center;gap:12px;margin-top:16px;padding:13px 14px;
+     border:1px solid rgba(212,137,58,.45);border-radius:8px;background:#242320}
+.out .sp{width:2px;align-self:stretch;border-radius:2px;background:#D4893A}
+.out .nm{font-size:14.5px;font-weight:500}
+.out .mt{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#7C7670;margin-top:2px}
+</style>
+<div class="l">
+  <div class="mark">
+    <svg viewBox="0 0 1172 858"><path fill="currentColor" d="M1171.96 655.745V789.672C1171.96 827.113 1141.61 857.472 1104.16 857.472C1066.72 857.472 1036.36 827.113 1036.36 789.672V698.733V591.042C1036.36 553.6 1006 523.241 968.562 523.241C931.121 523.241 900.762 553.6 900.762 591.042V698.733C900.762 736.175 870.402 766.534 832.961 766.534C795.519 766.534 765.16 736.175 765.16 698.733V181.318C765.16 143.877 795.519 113.517 832.961 113.517C870.402 113.517 900.762 143.864 900.762 181.305V253.294C900.762 290.736 931.121 321.095 968.562 321.095C1006 321.095 1036.36 290.736 1036.36 253.294V181.305V67.8007C1036.36 30.3593 1066.72 0 1104.16 0C1141.61 0 1171.96 30.3593 1171.96 67.8007V655.733Z"/><path fill="currentColor" d="M0 655.745V789.672C0 827.113 30.3593 857.472 67.8007 857.472C105.242 857.472 135.602 827.113 135.602 789.672V698.733V591.042C135.602 553.6 165.961 523.241 203.402 523.241C240.844 523.241 271.203 553.6 271.203 591.042V698.733C271.203 736.175 301.562 766.534 339.004 766.534C376.445 766.534 406.805 736.175 406.805 698.733V181.318C406.805 143.877 376.445 113.517 339.004 113.517C301.562 113.517 271.203 143.864 271.203 181.305V253.294C271.203 290.736 240.844 321.095 203.402 321.095C165.961 321.095 135.602 290.736 135.602 253.294V181.305V67.8134C135.602 30.372 105.242 .0127 67.8007 .0127C30.3593 .0127 0 30.372 0 67.8134V655.745Z"/></svg>
+    <span>Bind it</span>
+  </div>
+  <h1>A folder of chapters.<br><em>One audiobook file.</em></h1>
+  <p>Merge loose chapter files into a single M4B — chapters, cover art and metadata baked in.</p>
+  <div class="meta"><b>macOS</b><b>Windows</b><b>Linux</b><b>Free &amp; open source</b></div>
+</div>
+<div class="r">
+  <div class="hd"><span>Input</span><span style="text-transform:none;letter-spacing:.02em">7 files · MP3</span></div>
+  <div class="stage">
+    <ol>
+      <li><b>01</b><span>The Harbour</span><i>12:04</i></li>
+      <li><b>02</b><span>First Light</span><i>28:31</i></li>
+      <li><b>03</b><span>A Slow Tide</span><i>34:18</i></li>
+      <li><b>04</b><span>The Lantern</span><i>41:02</i></li>
+      <li><b>05</b><span>Tidelines</span><i>29:47</i></li>
+      <li><b>06</b><span>Wreckage</span><i>36:55</i></li>
+      <li><b>07</b><span>Salt and Iron</span><i>33:20</i></li>
+    </ol>
+    <div class="out"><span class="sp"></span><span><span class="nm">The Silent Shore.m4b</span><span class="mt" style="display:block">7 chapters · 3:35:57</span></span></div>
+  </div>
+</div>
+
+<!--
+  Source for public/og.png (the 1200x630 social preview card).
+  Regenerate after changing the headline or version:
+
+    cd landing
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless --disable-gpu --hide-scrollbars --allow-file-access-from-files \
+      --force-device-scale-factor=1 --window-size=1200,630 \
+      --screenshot=public/og.png "file://$PWD/scripts/og.html"
+-->

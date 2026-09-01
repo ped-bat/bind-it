@@ -46,6 +46,26 @@ install_bin() {
   chmod +x "$dest"
 }
 
+# Extract a zip without assuming `unzip` exists. The GitHub Windows runner
+# ships neither a guaranteed unzip nor (since 2024) 7-Zip, so fall back to
+# PowerShell and then Python before giving up.
+extract_zip() {
+  local archive="$1" dest="$2"
+  mkdir -p "$dest"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -q "$archive" -d "$dest"
+  elif command -v pwsh >/dev/null 2>&1 || command -v powershell >/dev/null 2>&1; then
+    local ps; ps="$(command -v pwsh || command -v powershell)"
+    "$ps" -NoProfile -Command \
+      "Expand-Archive -LiteralPath '$archive' -DestinationPath '$dest' -Force"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$archive" "$dest"
+  else
+    echo "No way to extract $archive (need unzip, PowerShell, or python3)" >&2
+    return 1
+  fi
+}
+
 fetch_btbn() {
   # BtbN builds: single archive contains ffmpeg + ffprobe under bin/
   local triple="$1" url="$2" archive="$3"
@@ -57,7 +77,7 @@ fetch_btbn() {
   local extract_dir="$TMP_DIR/extract-$triple"
   mkdir -p "$extract_dir"
   case "$archive" in
-    *.zip)    unzip -q "$archive_path" -d "$extract_dir" ;;
+    *.zip)    extract_zip "$archive_path" "$extract_dir" ;;
     *.tar.xz) tar -xf "$archive_path" -C "$extract_dir" ;;
     *) echo "Unknown archive: $archive"; return 1 ;;
   esac
@@ -78,7 +98,7 @@ fetch_evermeet() {
     curl -fsSL -o "$zip_path" "https://evermeet.cx/ffmpeg/getrelease/$bin/zip"
     local extract_dir="$TMP_DIR/extract-$bin-$triple"
     mkdir -p "$extract_dir"
-    unzip -q "$zip_path" -d "$extract_dir"
+    extract_zip "$zip_path" "$extract_dir"
     install_bin "$extract_dir/$bin" "$OUT_DIR/$bin-$triple"
   done
 }
@@ -92,7 +112,7 @@ fetch_osxexperts() {
     curl -fsSL -o "$zip_path" "https://www.osxexperts.net/${bin}71arm.zip"
     local extract_dir="$TMP_DIR/extract-$bin-$triple"
     mkdir -p "$extract_dir"
-    unzip -q "$zip_path" -d "$extract_dir"
+    extract_zip "$zip_path" "$extract_dir"
     local src
     src="$(find "$extract_dir" -type f -name "$bin" | head -1)"
     [[ -z "$src" ]] && { echo "$bin not found in archive"; return 1; }

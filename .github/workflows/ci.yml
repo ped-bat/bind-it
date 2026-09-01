@@ -11,16 +11,36 @@ on:
       - "landing/**"
       - "**.md"
 
+# A newer push to the same branch makes an in-flight run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      # The Rust integration tests drive real ffmpeg/ffprobe to generate
-      # synthetic fixtures and verify merge output.
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # Two separate needs bundled into one install:
+      #  - the Tauri crate links against webkit2gtk/gtk and won't compile
+      #    without these, even for `cargo test --lib`
+      #  - the integration tests shell out to ffmpeg/ffprobe to generate
+      #    synthetic fixtures and to verify merge output
+      - name: Install build and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            ffmpeg
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -34,6 +54,14 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-test-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      # src-tauri/binaries/ is deliberately not committed, but tauri-build
+      # resolves every externalBin at compile time and fails if one is
+      # missing — so the sidecars must exist before any cargo command.
+      # This also exercises the fetch script and the self-containment guard
+      # on every run, which is where the Homebrew-dylib regression hid.
+      - name: Fetch ffmpeg sidecars
+        run: ./scripts/fetch-binaries.sh
 
       - name: cargo test
         working-directory: src-tauri

@@ -19,7 +19,7 @@ jobs:
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
             sidecar-triples: aarch64-apple-darwin x86_64-apple-darwin
             tauri-args: --target universal-apple-darwin
-          - platform: ubuntu-22.04
+          - platform: ubuntu-24.04
             label: linux-x86_64
             rust-targets: x86_64-unknown-linux-gnu
             sidecar-triples: x86_64-unknown-linux-gnu
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Linux build dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -43,6 +43,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
+            libxdo-dev \
             libssl-dev \
             build-essential \
             curl \

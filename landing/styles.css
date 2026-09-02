@@ -337,6 +337,7 @@ section > * {
   margin: 0 auto clamp(28px, 5vh, 44px);
   line-height: 1.5;
 }
+.hero-lede span   { display: block; }
 .hero-lede strong { color: var(--text); font-weight: 600; }
 
 .hero-shot {

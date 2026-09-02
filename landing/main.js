@@ -51,9 +51,9 @@ if (!('IntersectionObserver' in window)) {
 
 /* ── OS detection for primary download button ────────────────── */
 const OS = {
-  macos:   { label: 'Download for macOS',   arch: 'Universal · Apple Silicon & Intel', icon: 'i-apple' },
-  windows: { label: 'Download for Windows', arch: 'x64 · Windows 10+',                icon: 'i-windows' },
-  linux:   { label: 'Download for Linux',   arch: 'AppImage · x86_64',                icon: 'i-linux' },
+  macos:   { label: 'Download for macOS',   icon: 'i-apple' },
+  windows: { label: 'Download for Windows', icon: 'i-windows' },
+  linux:   { label: 'Download for Linux',   icon: 'i-linux' },
 };
 
 function detectOS() {
@@ -69,14 +69,12 @@ const os = detectOS();
 const primary = document.getElementById('primary-download');
 const primaryLabel = document.getElementById('primary-download-label');
 const primaryIcon = document.getElementById('primary-download-icon');
-const meta = document.getElementById('download-meta');
 const altWrap = document.getElementById('download-alt');
 
-if (os && primary && primaryLabel && primaryIcon && meta) {
+if (os && primary && primaryLabel && primaryIcon) {
   const cfg = OS[os];
   primary.setAttribute('data-os', os);
   primaryLabel.textContent = cfg.label;
-  meta.textContent = cfg.arch;
   const use = primaryIcon.querySelector('use');
   if (use) use.setAttribute('href', `${SPRITE}#${cfg.icon}`);
 

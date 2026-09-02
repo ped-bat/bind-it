@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8">
+<style>
+@font-face{font-family:IS;src:url('../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:IN;src:url('../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2') format('woff2');font-weight:400}
+@font-face{font-family:IN;src:url('../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2') format('woff2');font-weight:600}
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:630px;background:#131211;color:#F4F2EF;font-family:IN,sans-serif;
+     overflow:hidden;position:relative;text-align:center}
+body::before{content:"";position:absolute;inset:-20% -10% auto -10%;height:120%;
+  background:radial-gradient(ellipse 55% 55% at 50% 0%,rgba(224,154,76,.14),transparent 70%)}
+.top{position:relative;padding-top:52px}
+.mark{width:96px;height:70px;margin:0 auto 6px;color:#E09A4C}
+h1{font-family:IS;font-weight:400;font-size:76px;line-height:.95;letter-spacing:-.035em;margin-bottom:16px}
+p{font-size:22px;line-height:1.45;color:#C2BCB3;max-width:660px;margin:0 auto}
+p b{color:#F4F2EF;font-weight:600}
+.shot{position:absolute;left:50%;transform:translateX(-50%);bottom:-32px;width:760px;height:250px;
+  overflow:hidden;border-radius:12px;
+  -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 58%,transparent 100%)}
+.shot img{width:100%;object-fit:cover;object-position:50% 18%;height:100%;display:block}
+</style>
+<div class="top">
+  <svg class="mark" viewBox="0 0 1172 858"><path fill="currentColor" d="M1171.96 655.745V789.672C1171.96 827.113 1141.61 857.472 1104.16 857.472C1066.72 857.472 1036.36 827.113 1036.36 789.672V698.733V591.042C1036.36 553.6 1006 523.241 968.562 523.241C931.121 523.241 900.762 553.6 900.762 591.042V698.733C900.762 736.175 870.402 766.534 832.961 766.534C795.519 766.534 765.16 736.175 765.16 698.733V181.318C765.16 143.877 795.519 113.517 832.961 113.517C870.402 113.517 900.762 143.864 900.762 181.305V253.294C900.762 290.736 931.121 321.095 968.562 321.095C1006 321.095 1036.36 290.736 1036.36 253.294V181.305V67.8007C1036.36 30.3593 1066.72 0 1104.16 0C1141.61 0 1171.96 30.3593 1171.96 67.8007V655.733Z"/><path fill="currentColor" d="M0 655.745V789.672C0 827.113 30.3593 857.472 67.8007 857.472C105.242 857.472 135.602 827.113 135.602 789.672V698.733V591.042C135.602 553.6 165.961 523.241 203.402 523.241C240.844 523.241 271.203 553.6 271.203 591.042V698.733C271.203 736.175 301.562 766.534 339.004 766.534C376.445 766.534 406.805 736.175 406.805 698.733V181.318C406.805 143.877 376.445 113.517 339.004 113.517C301.562 113.517 271.203 143.864 271.203 181.305V253.294C271.203 290.736 240.844 321.095 203.402 321.095C165.961 321.095 135.602 290.736 135.602 253.294V181.305V67.8134C135.602 30.372 105.242 .0127 67.8007 .0127C30.3593 .0127 0 30.372 0 67.8134V655.745Z"/></svg>
+  <h1>Bind it</h1>
+  <p>Merge audio files into a single file. <b>Lossless, with chapters and covers baked in.</b> Native and offline.</p>
+</div>
+<div class="shot"><img src="../public/app-screenshot.png" alt=""></div>
+<!--
+  Source for public/og.png. Regenerate after changing the tagline:
+    cd landing && "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless --disable-gpu --hide-scrollbars --allow-file-access-from-files \
+      --force-device-scale-factor=1 --window-size=1200,630 \
+      --screenshot=public/og.png "file://$PWD/scripts/og.html"
+-->

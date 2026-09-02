@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bind it — Bind your audio files into a single M4B</title>
-  <meta name="description" content="Native desktop app that merges audio file chapter files (MP3, M4A, M4B) into one M4B with chapters, metadata, and cover art. Offline, private, zero setup.">
+  <meta name="description" content="Native desktop app that merges MP3, M4A, M4B, AAC, WAV, FLAC and WMA files into one file with chapters, metadata and cover art. Offline, private, zero setup.">
   <meta name="theme-color" content="#FAFAF8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
 
@@ -16,11 +16,13 @@
   <meta property="og:description" content="Merge audio file chapter files into a single M4B with chapters, metadata, and cover art.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://bindit.app/">
-  <meta property="og:image" content="https://bindit.app/icons/logomark.svg">
+  <meta property="og:image" content="https://bindit.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Bind it — Bind your audio files">
   <meta name="twitter:description" content="Merge audio file chapter files into a single M4B. Offline, private, zero setup.">
-  <meta name="twitter:image" content="https://bindit.app/icons/logomark.svg">
+  <meta name="twitter:image" content="https://bindit.app/og.png">
 
   <script type="module" src="/main.js"></script>
 </head>
@@ -44,7 +46,7 @@
       <h1 class="hero-title reveal-load" data-reveal-delay="100" id="hero-heading">Bind it</h1>
 
       <p class="hero-lede reveal-load" data-reveal-delay="150">
-        Merge audio file chapters into one M4B. <strong>Chapters, metadata, cover art — all baked in.</strong> Native. Offline. Instant.
+        Merge audio files into a single file. <strong>Lossless, with chapters and covers baked in.</strong> Native and offline.
       </p>
 
       <div class="download reveal-load" data-reveal-delay="200">
@@ -69,11 +71,13 @@
           </a>
         </div>
 
-        <span class="download-meta" id="download-meta">Apple Silicon · Free · Zero setup</span>
+        <span class="download-meta" id="download-meta">Universal · Free · Zero setup</span>
       </div>
 
-      <figure class="hero-shot" aria-hidden="true">
-        <img class="reveal-load" data-reveal-delay="250" src="icons/image-placeholder.svg" alt="" loading="lazy" width="860" height="538">
+      <figure class="hero-shot">
+        <img class="reveal-load" data-reveal-delay="250" src="app-screenshot.png"
+             alt="Bind it with an audiobook loaded: ten chapters listed with their durations and file sizes, cover art and title alongside."
+             loading="lazy" width="1720" height="2300">
       </figure>
     </section>
 
@@ -81,8 +85,7 @@
     <section id="features" aria-labelledby="features-heading">
       <header class="section-head">
         <p class="eyebrow reveal">Features</p>
-        <h2 class="section-title reveal" id="features-heading">Built <em>for audio files</em>.</h2>
-        <p class="section-lede reveal">Bind it picks the fastest path. Remux when it can. Transcode only when it must.</p>
+        <h2 class="section-title reveal" id="features-heading">Built for <em>audiobooks</em>.</h2>
       </header>
 
       <ul class="grid grid-features">
@@ -156,7 +159,7 @@
       <div class="faq">
         <details class="reveal">
           <summary>Which file formats does Bind it accept?</summary>
-          <p>MP3, M4A and M4B inputs. Output is always a single M4B with chapter markers, cover art and metadata.</p>
+          <p>MP3, M4A, M4B, AAC, WAV, FLAC and WMA. The output is a single M4B with chapter markers, cover art and metadata — or an MP3 if every input is MP3 and you keep the original codec.</p>
         </details>
         <details class="reveal">
           <summary>Does Bind it work offline?</summary>

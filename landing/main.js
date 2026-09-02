@@ -51,7 +51,7 @@ if (!('IntersectionObserver' in window)) {
 
 /* ── OS detection for primary download button ────────────────── */
 const OS = {
-  macos:   { label: 'Download for macOS',   arch: 'Apple Silicon · Universal build', icon: 'i-apple' },
+  macos:   { label: 'Download for macOS',   arch: 'Universal · Apple Silicon & Intel', icon: 'i-apple' },
   windows: { label: 'Download for Windows', arch: 'x64 · Windows 10+',                icon: 'i-windows' },
   linux:   { label: 'Download for Linux',   arch: 'AppImage · x86_64',                icon: 'i-linux' },
 };

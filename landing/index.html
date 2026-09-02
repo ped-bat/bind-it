@@ -10,7 +10,7 @@
 
   <link rel="canonical" href="https://bindit.app/">
   <link rel="icon" type="image/svg+xml" href="icons/logomark.svg">
-  <link rel="apple-touch-icon" href="icons/logomark.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <meta property="og:title" content="Bind it — Bind your audio files">
   <meta property="og:description" content="Merge audio file chapter files into a single M4B with chapters, metadata, and cover art.">
@@ -63,10 +63,12 @@
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
             macOS
           </a>
+          <span class="alt-sep" aria-hidden="true">·</span>
           <a href="#download" data-os="windows">
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
             Windows
           </a>
+          <span class="alt-sep" aria-hidden="true">·</span>
           <a href="#download" data-os="linux">
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
             Linux
@@ -85,20 +87,19 @@
     <!-- Features -->
     <section id="features" aria-labelledby="features-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">Features</p>
-        <h2 class="section-title reveal" id="features-heading">Built for <em>audiobooks</em>.</h2>
+        <h2 class="section-title reveal" id="features-heading">Built for <em>audiobooks</em></h2>
       </header>
 
       <ul class="grid grid-features">
         <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-zap"/></svg>
           <h3>Lossless options</h3>
-          <p>Merge without re-encoding, so nothing is lost and the file doesn&rsquo;t grow. Or compress instead, at any bitrate from 64 to 320 kbps, using every CPU core.</p>
+          <p>Merge without re-encoding for no audio quality loss, or choose to compress for smaller file sizes.</p>
         </li>
         <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-shield"/></svg>
           <h3>Offline &amp; private</h3>
-          <p>No uploads, no accounts, no tracking. ffmpeg is bundled in, so there is nothing to install and nothing to send anywhere &mdash; and your source files are never touched.</p>
+          <p>No account needed, no uploads, no cookies, no ads, no subscriptions. Files are processed locally.</p>
         </li>
         <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-bookmark"/></svg>
@@ -107,8 +108,8 @@
         </li>
         <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-code"/></svg>
-          <h3>Open source</h3>
-          <p>MIT licensed, with every line public on GitHub. You can read exactly what it does with your files, or build it yourself and trust nothing but your own compiler.</p>
+          <h3>Free and open source</h3>
+          <p>MIT licensed, with every line public on GitHub. It was useful for me, I thought it could be useful for you too.</p>
         </li>
       </ul>
     </section>
@@ -116,8 +117,7 @@
     <!-- How -->
     <section id="how" aria-labelledby="how-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">Workflow</p>
-        <h2 class="section-title reveal" id="how-heading"><em>Easy</em> to use.</h2>
+        <h2 class="section-title reveal" id="how-heading"><em>Easy</em> to use</h2>
       </header>
 
       <ol class="steps reveal">
@@ -142,8 +142,7 @@
     <!-- FAQ -->
     <section id="faq" aria-labelledby="faq-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">FAQ</p>
-        <h2 class="section-title reveal" id="faq-heading">Common <em>questions</em>.</h2>
+        <h2 class="section-title reveal" id="faq-heading">Common <em>questions</em></h2>
       </header>
 
       <div class="faq">
@@ -177,9 +176,8 @@
     <!-- Download -->
     <section id="download" class="section-alt" aria-labelledby="download-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">Download</p>
-        <h2 class="section-title reveal" id="download-heading">Get <em>Bind it</em>.</h2>
-        <p class="section-lede reveal">Free. MIT-licensed. Grab the build for your platform.</p>
+        <h2 class="section-title reveal" id="download-heading">Download <em>Bind it</em></h2>
+        <p class="section-lede reveal">Free and open source.</p>
       </header>
 
       <ul class="grid grid-download">
@@ -216,9 +214,22 @@
       </p>
     </section>
 
+    <!-- Support -->
+    <section id="support" class="support" aria-labelledby="support-heading">
+      <h2 class="section-title reveal" id="support-heading">Like <em>this</em>?</h2>
+      <p class="section-lede reveal">
+        Bind it is free, with no ads and no subscription. If it saved you an afternoon,
+        you can put something in the tip jar.
+      </p>
+      <!-- TODO: point this at the real donation link (Buy Me a Coffee / Ko-fi / PayPal). -->
+      <a class="btn btn-primary reveal" id="donate" href="#" rel="noopener">
+        <svg class="icon-line" aria-hidden="true"><use href="icons/sprite.svg#i-coffee"/></svg>
+        Buy me a coffee
+      </a>
+    </section>
+
     <!-- Feedback -->
     <section id="report" class="feedback" aria-labelledby="feedback-heading">
-      <p class="eyebrow reveal">Feedback</p>
       <h2 class="section-title reveal" id="feedback-heading">Found a <em>bug</em>?</h2>
       <p class="section-lede reveal">Open an issue on GitHub, or drop us an email.</p>
       <a class="btn btn-primary reveal" href="https://github.com/ped-bat/bind-it/issues/new" rel="noopener">

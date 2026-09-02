@@ -145,6 +145,7 @@ summary  { cursor: pointer; }
 /* Icons — filled (brand) vs stroked (UI). */
 .icon-brand { fill: currentColor; stroke: none; }
 .icon-feature,
+.icon-line,
 .feedback-mail svg {
   fill: none;
   stroke: currentColor;
@@ -251,26 +252,6 @@ section > * {
 .section-alt { background: var(--surface); border-top: 1px solid var(--border); }
 
 .section-head { text-align: center; margin-bottom: var(--gap-head); }
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
-  margin-bottom: 20px;
-}
-.eyebrow::before,
-.eyebrow::after {
-  content: "";
-  width: 24px;
-  height: 1px;
-  background: var(--text-faint);
-}
 
 .section-title {
   font-family: var(--font-display);
@@ -388,11 +369,8 @@ section > * {
 .download-alt a:hover   { background: var(--surface); color: var(--text); }
 .download-alt a[hidden] { display: none; }
 .download-alt a svg     { width: 14px; height: 14px; }
-.download-alt a:not([hidden]) ~ a:not([hidden])::before {
-  content: "·";
-  margin-right: 6px;
-  color: var(--text-faint);
-}
+.alt-sep          { color: var(--text-faint); }
+.alt-sep[hidden]  { display: none; }
 .download-meta {
   font-size: 13px;
   color: var(--text-faint);
@@ -549,11 +527,16 @@ section > * {
 .download-note a:hover { border-bottom-color: var(--accent); }
 
 /* ── 11. Feedback ─────────────────────────────────────────────── */
-.feedback {
+.feedback,
+.support {
   text-align: center;
   border-top: 1px solid var(--border);
 }
-.feedback > * { max-width: 520px; }
+.feedback > *,
+.support > * { max-width: 520px; }
+
+.support .section-title { margin-bottom: 20px; }
+.support .section-lede  { margin-bottom: 32px; }
 .feedback .section-title { margin-bottom: 20px; }
 .feedback .section-lede  { margin-bottom: 32px; }
 

@@ -56,5 +56,10 @@
     <symbol id="i-code" viewBox="0 0 24 24">
       <path d="M8.5 18.5 2 12l6.5-6.5M15.5 5.5 22 12l-6.5 6.5"/>
     </symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24">
+      <path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9Z"/>
+      <path d="M17 10h1.4a2.6 2.6 0 0 1 0 5.2H17"/>
+      <path d="M8 2v2.5M12 2v2.5M16 2v2.5"/>
+    </symbol>
   </defs>
 </svg>

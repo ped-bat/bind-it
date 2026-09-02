@@ -81,7 +81,17 @@ if (os && primary && primaryLabel && primaryIcon) {
   if (altWrap) {
     altWrap.setAttribute('data-detected', os);
     const detectedPill = altWrap.querySelector(`a[data-os="${os}"]`);
-    if (detectedPill) detectedPill.hidden = true;
+    if (detectedPill) {
+      detectedPill.hidden = true;
+      // Drop one adjacent separator too, so the remaining two keep exactly
+      // one dot between them.
+      const sep = detectedPill.nextElementSibling?.classList.contains('alt-sep')
+        ? detectedPill.nextElementSibling
+        : detectedPill.previousElementSibling?.classList.contains('alt-sep')
+          ? detectedPill.previousElementSibling
+          : null;
+      if (sep) sep.hidden = true;
+    }
   }
 }
 

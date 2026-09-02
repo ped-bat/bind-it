@@ -53,5 +53,8 @@
       <path d="m22 2-7 20-4-9-9-4z"/>
       <path d="M22 2 11 13"/>
     </symbol>
+    <symbol id="i-code" viewBox="0 0 24 24">
+      <path d="M8.5 18.5 2 12l6.5-6.5M15.5 5.5 22 12l-6.5 6.5"/>
+    </symbol>
   </defs>
 </svg>

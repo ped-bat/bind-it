@@ -406,7 +406,11 @@ section > * {
   gap: 20px;
 }
 .grid-features {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: 1fr;
+}
+@media (min-width: 700px) {
+  /* Four cards: 2x2 reads better than a 3 + 1 orphan row. */
+  .grid-features { grid-template-columns: repeat(2, 1fr); }
 }
 .grid-features .card { text-align: center; }
 .icon-feature {
@@ -513,6 +517,11 @@ section > * {
   flex-shrink: 0;
 }
 .faq details[open] summary::after { transform: rotate(-135deg); }
+.faq p code {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  color: var(--text);
+}
 .faq p {
   padding: 0 24px 20px;
   color: var(--text-muted);

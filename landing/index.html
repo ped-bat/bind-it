@@ -91,34 +91,24 @@
 
       <ul class="grid grid-features">
         <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-package"/></svg>
-          <h3>Zero setup</h3>
-          <p>ffmpeg bundled in. Download, open, bind. Nothing else to install.</p>
-        </li>
-        <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-zap"/></svg>
-          <h3>Lossless remux</h3>
-          <p>AAC files join directly, with no re-encoding. Near-instant. Bit-perfect.</p>
-        </li>
-        <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-cpu"/></svg>
-          <h3>Parallel transcoding</h3>
-          <p>MP3s convert to AAC across every CPU core. Hours of audio in minutes.</p>
-        </li>
-        <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-bookmark"/></svg>
-          <h3>Chapters &amp; metadata</h3>
-          <p>Title, author, cover art — auto-detected, fully editable. Chapters made from filenames.</p>
-        </li>
-        <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-pointer"/></svg>
-          <h3>Drag &amp; drop</h3>
-          <p>Drop files or a folder. Drag to reorder. Bitrate from 64 to 320 kbps.</p>
+          <h3>Lossless options</h3>
+          <p>Merge without re-encoding, so nothing is lost and the file doesn&rsquo;t grow. Or compress instead, at any bitrate from 64 to 320 kbps, using every CPU core.</p>
         </li>
         <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-shield"/></svg>
           <h3>Offline &amp; private</h3>
-          <p>No uploads. No accounts. No tracking. Your files stay on your machine.</p>
+          <p>No uploads, no accounts, no tracking. ffmpeg is bundled in, so there is nothing to install and nothing to send anywhere &mdash; and your source files are never touched.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-bookmark"/></svg>
+          <h3>Chapters &amp; metadata</h3>
+          <p>Every file becomes a chapter marker. Title, author and cover art are read from your files and stay editable right up until you bind.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-code"/></svg>
+          <h3>Open source</h3>
+          <p>MIT licensed, with every line public on GitHub. You can read exactly what it does with your files, or build it yourself and trust nothing but your own compiler.</p>
         </li>
       </ul>
     </section>
@@ -127,25 +117,24 @@
     <section id="how" aria-labelledby="how-heading">
       <header class="section-head">
         <p class="eyebrow reveal">Workflow</p>
-        <h2 class="section-title reveal" id="how-heading">Three steps. <em>One M4B.</em></h2>
-        <p class="section-lede reveal">From folder to finished audio file in under a minute.</p>
+        <h2 class="section-title reveal" id="how-heading"><em>Easy</em> to use.</h2>
       </header>
 
       <ol class="steps reveal">
         <li class="step">
           <span class="step-number" aria-hidden="true">1</span>
-          <h3>Drop</h3>
-          <p>Drag your chapter files onto Bind it.</p>
+          <h3>Add files</h3>
+          <p>Drag and drop, or pick files and folders.</p>
         </li>
         <li class="step">
           <span class="step-number" aria-hidden="true">2</span>
           <h3>Review</h3>
-          <p>Reorder, edit metadata, pick a bitrate.</p>
+          <p>Reorder chapters, rename, set cover, metadata and format.</p>
         </li>
         <li class="step">
           <span class="step-number" aria-hidden="true">3</span>
-          <h3>Bind</h3>
-          <p>One click. Out comes your M4B.</p>
+          <h3>Bind it</h3>
+          <p>One click and your file is ready.</p>
         </li>
       </ol>
     </section>
@@ -172,7 +161,7 @@
         </details>
         <details class="reveal">
           <summary>Does it handle DRM-protected audio files?</summary>
-          <p>No. Bind it only processes unprotected audio files that you own.</p>
+          <p>No. Audible <code>.aax</code> and iTunes <code>.m4p</code> files are not accepted file types, and anything still encrypted cannot be decoded. Bind it works on unprotected files you already own &mdash; it does not remove protection.</p>
         </details>
         <details class="reveal">
           <summary>How are chapters detected?</summary>
@@ -250,7 +239,6 @@
   <footer>
     <nav class="footer-links" aria-label="Footer">
       <a href="https://github.com/ped-bat/bind-it" rel="noopener">GitHub</a>
-      <a href="https://github.com/ped-bat/bind-it/releases" rel="noopener">Releases</a>
       <a href="https://github.com/ped-bat/bind-it/blob/main/LICENSE" rel="noopener">MIT License</a>
       <a href="mailto:hello@bindit.app">Contact</a>
     </nav>

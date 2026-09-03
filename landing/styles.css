@@ -20,6 +20,7 @@
   --bg-elev: #FFFFFF;
   --surface: #F2F0EC;
   --alt-veil: rgba(0, 0, 0, 0.035);
+  --veil-strong: rgba(0, 0, 0, 0.06);
   --surface-hover: #EAE7E1;
   --border: #E2DFD9;
   --text: #1A1918;
@@ -64,6 +65,7 @@
     --bg-elev: #1A1918;
     --surface: #1E1D1B;
     --alt-veil: rgba(255, 255, 255, 0.04);
+    --veil-strong: rgba(255, 255, 255, 0.07);
     --surface-hover: #292724;
     --border: #322F2B;
     --text: #F4F2EF;
@@ -199,7 +201,7 @@ summary  { cursor: pointer; }
 
 
 .card {
-  background: var(--surface);
+  background: var(--alt-veil);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: clamp(24px, 4vw, 36px) clamp(22px, 3.5vw, 32px);
@@ -208,14 +210,14 @@ summary  { cursor: pointer; }
               background 220ms var(--ease-out),
               box-shadow 220ms var(--ease-out);
 }
-.card:hover { transform: translateY(-4px); border-color: var(--accent); background: var(--surface-hover); }
+.card:hover { transform: translateY(-4px); border-color: var(--accent); background: var(--veil-strong); }
 
 .card-link {
   display: flex;
   align-items: center;
   gap: 16px;
   color: var(--text);
-  background: var(--bg-elev);
+  background: var(--alt-veil);
   padding: 20px 22px;
 }
 .card-link:hover { box-shadow: var(--shadow-md); }
@@ -346,7 +348,7 @@ section > * {
   font-weight: 500;
   transition: background 120ms var(--ease-out), color 120ms var(--ease-out);
 }
-.download-alt a:hover   { background: var(--surface); color: var(--text); }
+.download-alt a:hover   { background: var(--alt-veil); color: var(--text); }
 .download-alt a[hidden] { display: none; }
 .download-alt a svg     { width: 14px; height: 14px; }
 .alt-sep          { color: var(--text-faint); }
@@ -391,7 +393,7 @@ section > * {
 
 /* ── 8. How it works ──────────────────────────────────────────── */
 .steps {
-  background: var(--surface);
+  background: var(--alt-veil);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: clamp(40px, 6vw, 64px) clamp(24px, 4vw, 48px);
@@ -446,7 +448,7 @@ section > * {
   gap: 10px;
 }
 .faq details {
-  background: var(--surface);
+  background: var(--alt-veil);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   transition: border-color 180ms var(--ease-out);
@@ -532,7 +534,7 @@ section > * {
   padding: 8px 14px;
   font-size: 14px;
   color: var(--text-muted);
-  background: var(--bg-elev);
+  background: var(--alt-veil);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   transition: border-color 150ms var(--ease-out), color 150ms var(--ease-out);

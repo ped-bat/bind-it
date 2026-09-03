@@ -79,17 +79,20 @@
 /* ── 2. Base ───────────────────────────────────────────────────── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
-
-body {
-  font-family: var(--font-body);
-  /* Fixed attachment anchors this to the viewport rather than the document,
-     so the glow keeps painting into the rubber-band gutter on overscroll
-     instead of being cut off at the top of the page box. */
+html {
+  scroll-behavior: smooth;
+  /* The glow lives on the root element, so it *is* the canvas background and
+     keeps painting into the rubber-band gutter on overscroll. body must stay
+     transparent or it would cover this within its own box. */
   background-color: var(--bg);
   background-image: radial-gradient(ellipse 60% 42% at 50% 0%, var(--accent-soft), transparent 70%);
   background-repeat: no-repeat;
   background-attachment: fixed;
+}
+
+body {
+  font-family: var(--font-body);
+  background: transparent;
   color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -294,16 +297,19 @@ section > * {
    cropped. The radius sits on the image itself, so it rounds the window's
    own edges instead of slicing across them. */
 .hero-shot {
+  /* 806px shows the shot at 1:1, so its text matches the app's own size. */
   margin: clamp(48px, 8vh, 72px) auto 0;
-  max-width: 720px;
+  max-width: 806px;
 }
 .hero-shot img {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-lg);
+  /* The panels carry their own corners and the gaps between them are
+     transparent, so the page background shows through. No radius here -
+     it would round the panel corners a second time. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 68%, transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 0%, #000 68%, transparent 100%);
 }
 
 /* Download group inside hero */
@@ -546,6 +552,8 @@ footer {
   gap: 6px 20px;
 }
 .footer-links a {
+  /* 21px tall failed WCAG 2.5.8 (24x24 minimum target). */
+  padding: 6px 0;
   color: var(--text-muted);
   transition: color 120ms var(--ease-out);
 }

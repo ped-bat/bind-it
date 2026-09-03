@@ -549,11 +549,11 @@ section > * {
 }
 
 .strip-note {
-  /* Matches .section-lede exactly (the "Free and open source" line), with
-     the hero tagline's one-line-per-span pattern. */
+  /* Same size as the FAQ answers (.faq p), with the hero tagline's
+     one-line-per-span pattern. */
   max-width: 52ch;
-  font-size: var(--type-lede);
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.65;
   color: var(--text-muted);
 }
 .strip-note span { display: block; }

@@ -24,6 +24,15 @@
   <meta name="twitter:description" content="Merge audio files into a single file. Lossless, with chapters and covers baked in. Native, offline and open source.">
   <meta name="twitter:image" content="https://bindit.app/og.png">
 
+  <style>
+    /* Painted before the stylesheet arrives, so the page never flashes white.
+       Keep these two values in sync with --bg in styles.css. color-scheme
+       also gets the scrollbars and form controls onto the right theme from
+       the first frame. */
+    :root { color-scheme: light dark; background: #FAFAF8; }
+    @media (prefers-color-scheme: dark) { :root { background: #131211; } }
+  </style>
+
   <script type="module" src="/main.js"></script>
 </head>
 <body>

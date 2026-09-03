@@ -19,6 +19,7 @@
   --bg: #FAFAF8;
   --bg-elev: #FFFFFF;
   --surface: #F2F0EC;
+  --alt-veil: rgba(0, 0, 0, 0.035);
   --surface-hover: #EAE7E1;
   --border: #E2DFD9;
   --text: #1A1918;
@@ -62,6 +63,7 @@
     --bg: #131211;
     --bg-elev: #1A1918;
     --surface: #1E1D1B;
+    --alt-veil: rgba(255, 255, 255, 0.04);
     --surface-hover: #292724;
     --border: #322F2B;
     --text: #F4F2EF;
@@ -231,7 +233,12 @@ section > * {
   margin-inline: auto;
 }
 
-.section-alt { background: var(--surface); border-top: 1px solid var(--border); }
+.section-alt {
+  /* Translucent, not an opaque fill - lets the radial gradient show through
+     as the section scrolls past the top of the viewport. */
+  background: var(--alt-veil);
+  border-top: 1px solid var(--border);
+}
 
 .section-head { text-align: center; margin-bottom: var(--gap-head); }
 
@@ -297,9 +304,9 @@ section > * {
    cropped. The radius sits on the image itself, so it rounds the window's
    own edges instead of slicing across them. */
 .hero-shot {
-  /* 806px shows the shot at 1:1, so its text matches the app's own size. */
+  /* 812px shows the shot at 1:1, so its text matches the app's own size. */
   margin: clamp(48px, 8vh, 72px) auto 0;
-  max-width: 806px;
+  max-width: 812px;
 }
 .hero-shot img {
   display: block;
@@ -308,8 +315,8 @@ section > * {
   /* The panels carry their own corners and the gaps between them are
      transparent, so the page background shows through. No radius here -
      it would round the panel corners a second time. */
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 68%, transparent 100%);
-          mask-image: linear-gradient(to bottom, #000 0%, #000 68%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 57%, transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 0%, #000 57%, transparent 100%);
 }
 
 /* Download group inside hero */

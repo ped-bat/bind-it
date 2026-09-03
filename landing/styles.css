@@ -214,7 +214,10 @@ summary  { cursor: pointer; }
   background: var(--alt-veil);
   padding: 20px 22px;
 }
-.card-link:hover { box-shadow: var(--shadow-md); }
+/* The platform cards keep their hover; only the feature cards lost theirs.
+   They share .card, so the accent border has to live here. */
+.card-link { transition: border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out); }
+.card-link:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
 .card-link svg { width: 28px; height: 28px; flex-shrink: 0; }
 .card-title { display: block; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
 .card-sub   { display: block; font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
@@ -458,6 +461,35 @@ section > * {
   color: var(--text);
 }
 .faq summary::-webkit-details-marker { display: none; }
+
+/* Animate the disclosure. ::details-content is the modern hook; browsers
+   without it just open instantly, which is a fine fallback.
+   The text fades in slightly after the height starts moving, and fades out
+   before it collapses, so it is never seen clipped mid-transition. */
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+
+  .faq details::details-content {
+    height: 0;
+    overflow: hidden;
+    opacity: 0;
+    content-visibility: hidden;
+    transition:
+      height 280ms var(--ease-out),
+      opacity 120ms var(--ease-out),
+      content-visibility 280ms allow-discrete;
+  }
+
+  .faq details[open]::details-content {
+    height: auto;
+    opacity: 1;
+    content-visibility: visible;
+    transition:
+      height 280ms var(--ease-out),
+      opacity 200ms var(--ease-out) 110ms,
+      content-visibility 280ms allow-discrete;
+  }
+}
 .faq summary::after {
   content: "";
   width: 10px;
@@ -516,13 +548,12 @@ section > * {
 }
 
 .strip-note {
-  /* Same type metrics as .section-lede, and the same one-line-per-span
-     pattern as the hero tagline, so it reads as part of the page. */
+  /* Matches .section-lede exactly (the "Free and open source" line), with
+     the hero tagline's one-line-per-span pattern. */
   max-width: 52ch;
   font-size: var(--type-lede);
   line-height: 1.55;
-  color: var(--text);
-  font-weight: 600;
+  color: var(--text-muted);
 }
 .strip-note span { display: block; }
 
@@ -550,11 +581,15 @@ section > * {
 }
 
 /* ── 12. Footer ───────────────────────────────────────────────── */
+/* The rule runs the full viewport width; the content stays on the page's
+   measure via .footer-inner. */
 footer {
   padding: 40px var(--pad-x) 56px;
   border-top: 1px solid var(--border);
   font-size: 13px;
   color: var(--text-faint);
+}
+.footer-inner {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -576,7 +611,7 @@ footer {
 .footer-links a:hover { color: var(--accent); }
 
 @media (min-width: 768px) {
-  footer {
+  .footer-inner {
     flex-direction: row;
     justify-content: space-between;
     text-align: left;

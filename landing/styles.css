@@ -480,6 +480,10 @@ section > * {
 }
 
 /* ── 10. Download ─────────────────────────────────────────────── */
+/* Match the tip jar's lede-to-button gap (32px) rather than the much
+   larger --gap-head used by the reading sections. */
+#download .section-head { margin-bottom: 32px; }
+
 .grid-download {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   max-width: 820px;

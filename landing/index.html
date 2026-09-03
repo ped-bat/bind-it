@@ -209,34 +209,26 @@
       </p>
     </section>
 
-    <!-- Support -->
-    <section id="support" class="support" aria-labelledby="support-heading">
-      <h2 class="section-title reveal" id="support-heading">Like <em>this</em>?</h2>
-      <p class="section-lede reveal">
-        Bind it is free. If you found it useful and want to support it,
-        you can add something in the tip jar
-      </p>
-      <!-- TODO: point this at the real donation link (Buy Me a Coffee / Ko-fi / PayPal). -->
-      <a class="btn btn-primary reveal" id="donate" href="#" rel="noopener">
-        <svg class="icon-line" aria-hidden="true"><use href="icons/sprite.svg#i-coffee"/></svg>
-        Buy me a coffee
-      </a>
-    </section>
-
-    <!-- Feedback -->
-    <section id="report" class="feedback" aria-labelledby="feedback-heading">
-      <h2 class="section-title reveal" id="feedback-heading">Found a <em>bug</em>?</h2>
-      <p class="section-lede reveal">Open an issue on GitHub, or drop me an email</p>
-      <a class="btn btn-primary reveal" href="https://github.com/ped-bat/bind-it/issues/new" rel="noopener">
-        <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-github"/></svg>
-        Open an issue
-      </a>
-      <p class="feedback-mail reveal">
-        <a href="mailto:hello@bindit.app?subject=Bind%20it%20bug%20report">
-          <svg aria-hidden="true"><use href="icons/sprite.svg#i-send"/></svg>
-          hello@bindit.app
-        </a>
-      </p>
+    <!-- Support and feedback, folded into one strip above the footer -->
+    <section id="support" class="strip-section" aria-label="Support and feedback">
+      <div class="strip">
+        <p class="strip-note reveal">
+          <strong>Bind it is free and open source, made by one person.</strong>
+          If you found it useful and want to support it, you can give a tip.
+          If you found any issues, please report them.
+        </p>
+        <div class="strip-actions reveal">
+          <!-- TODO: point this at the real donation link (Buy Me a Coffee / Ko-fi / PayPal). -->
+          <a class="btn btn-primary btn-compact" id="donate" href="#" rel="noopener">
+            <svg class="icon-line" aria-hidden="true"><use href="icons/sprite.svg#i-coffee"/></svg>
+            Give a tip
+          </a>
+          <a class="btn btn-ghost btn-compact" href="https://github.com/ped-bat/bind-it/issues/new" rel="noopener">
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-github"/></svg>
+            Report an issue
+          </a>
+        </div>
+      </div>
     </section>
 
   </main>

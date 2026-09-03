@@ -10,7 +10,7 @@
    8. How it works
    9. FAQ
    10. Download
-   11. Feedback
+   11. Support strip
    12. Footer
    ================================================================ */
 
@@ -166,8 +166,7 @@ summary  { cursor: pointer; }
 /* Icons — filled (brand) vs stroked (UI). */
 .icon-brand { fill: currentColor; stroke: none; }
 .icon-feature,
-.icon-line,
-.feedback-mail svg {
+.icon-line {
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -205,12 +204,7 @@ summary  { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: clamp(24px, 4vw, 36px) clamp(22px, 3.5vw, 32px);
-  transition: transform 220ms var(--ease-out),
-              border-color 220ms var(--ease-out),
-              background 220ms var(--ease-out),
-              box-shadow 220ms var(--ease-out);
 }
-.card:hover { transform: translateY(-4px); border-color: var(--accent); background: var(--veil-strong); }
 
 .card-link {
   display: flex;
@@ -451,9 +445,7 @@ section > * {
   background: var(--alt-veil);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  transition: border-color 180ms var(--ease-out);
 }
-.faq details[open] { border-color: var(--accent); }
 .faq summary {
   list-style: none;
   padding: 20px 24px;
@@ -512,35 +504,52 @@ section > * {
 .download-note a { color: var(--text); border-bottom: 1px solid var(--border); }
 .download-note a:hover { border-bottom-color: var(--accent); }
 
-/* ── 11. Feedback ─────────────────────────────────────────────── */
-.feedback,
-.support {
-  text-align: center;
-  border-top: 1px solid var(--border);
-}
-.feedback > *,
-.support > * { max-width: 520px; }
+/* ── 11. Support + feedback strip ─────────────────────────────── */
+.strip-section { border-top: 1px solid var(--border); }
 
-.support .section-title { margin-bottom: 20px; }
-.support .section-lede  { margin-bottom: 32px; }
-.feedback .section-title { margin-bottom: 20px; }
-.feedback .section-lede  { margin-bottom: 32px; }
-
-.feedback-mail { margin-top: 14px; }
-.feedback-mail a {
-  display: inline-flex;
+.strip {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
-  color: var(--text-muted);
-  background: var(--alt-veil);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  transition: border-color 150ms var(--ease-out), color 150ms var(--ease-out);
+  justify-content: space-between;
+  gap: 24px 40px;
 }
-.feedback-mail a:hover { border-color: var(--accent); color: var(--text); }
-.feedback-mail svg     { width: 14px; height: 14px; color: var(--accent); }
+
+.strip-note {
+  max-width: 52ch;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+.strip-note strong {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.strip-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.btn-compact { padding: 13px 22px; font-size: 15px; }
+
+.btn-ghost {
+  background: var(--alt-veil);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+.btn-ghost:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: var(--veil-strong);
+  box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  .strip { flex-direction: column; align-items: flex-start; }
+  .strip-actions { width: 100%; }
+  .strip-actions .btn { flex: 1 1 auto; justify-content: center; }
+}
 
 /* ── 12. Footer ───────────────────────────────────────────────── */
 footer {

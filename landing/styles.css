@@ -53,8 +53,8 @@
   --animate-duration: 700ms;
 
   /* Every reveal travels the same distance, over the same time. */
-  --reveal-shift: 20px;
-  --reveal-duration: 600ms;
+  --reveal-shift: 40px;
+  --reveal-duration: 1000ms;
 }
 
 @media (prefers-color-scheme: dark) {

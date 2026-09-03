@@ -83,7 +83,13 @@ html { scroll-behavior: smooth; }
 
 body {
   font-family: var(--font-body);
-  background: var(--bg);
+  /* Fixed attachment anchors this to the viewport rather than the document,
+     so the glow keeps painting into the rubber-band gutter on overscroll
+     instead of being cut off at the top of the page box. */
+  background-color: var(--bg);
+  background-image: radial-gradient(ellipse 60% 42% at 50% 0%, var(--accent-soft), transparent 70%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -251,15 +257,6 @@ section > * {
   padding-block: clamp(72px, 12vh, 120px) var(--pad-section);
   overflow: hidden;
 }
-.hero::before {
-  content: "";
-  position: absolute;
-  inset: -20% -10% auto -10%;
-  height: 120%;
-  background: radial-gradient(ellipse 55% 55% at 50% 0%, var(--accent-soft), transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-}
 .hero > * { position: relative; z-index: 1; }
 
 
@@ -293,22 +290,20 @@ section > * {
 .hero-lede span   { display: block; }
 .hero-lede strong { color: var(--text); font-weight: 600; }
 
+/* The shot is the whole app window, so it is shown complete rather than
+   cropped. The radius sits on the image itself, so it rounds the window's
+   own edges instead of slicing across them. */
 .hero-shot {
   margin: clamp(48px, 8vh, 72px) auto 0;
-  max-width: 860px;
-  aspect-ratio: 16 / 10;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 72%, transparent 100%);
-          mask-image: linear-gradient(to bottom, #000 0%, #000 72%, transparent 100%);
+  max-width: 720px;
 }
 .hero-shot img {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  /* The shot is a full, tall app window; frame it on the chapter list rather
-     than the app's own logo, which would repeat the hero title just above. */
-  object-position: 50% 24%;
+  height: auto;
   border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
 }
 
 /* Download group inside hero */

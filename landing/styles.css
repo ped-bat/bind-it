@@ -516,12 +516,15 @@ section > * {
 }
 
 .strip-note {
+  /* Same type metrics as .section-lede, and the same one-line-per-span
+     pattern as the hero tagline, so it reads as part of the page. */
   max-width: 52ch;
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--type-lede);
+  line-height: 1.55;
   color: var(--text);
   font-weight: 600;
 }
+.strip-note span { display: block; }
 
 .strip-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 

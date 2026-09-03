@@ -3,7 +3,7 @@
    1. Tokens
    2. Base / reset
    3. Utilities (skip-link, reveal, icons)
-   4. Components (btn, pill, card)
+   4. Components (btn, card)
    5. Section scaffolding (section, head, eyebrow, title, lede)
    6. Hero
    7. Features grid
@@ -51,6 +51,10 @@
 
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --animate-duration: 700ms;
+
+  /* Every reveal travels the same distance, over the same time. */
+  --reveal-shift: 20px;
+  --reveal-duration: 600ms;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -126,15 +130,19 @@ summary  { cursor: pointer; }
 }
 .skip-link:focus-visible { top: 12px; }
 
-/* Reveal: elements start hidden, JS adds animate__ classes to fade them in. */
+/* Reveal: elements start hidden, JS adds animate__ classes to fade them in.
+   The shift is a fixed distance, not a percentage — a percentage is relative
+   to each element's own height, so a tall card travelled ten times further
+   than a heading. */
 .reveal, .reveal-load { opacity: 0; }
 .animate__animated {
-  animation-duration: 1s;
+  animation-duration: var(--reveal-duration);
+  animation-timing-function: var(--ease-out);
   animation-fill-mode: both;
 }
 .animate__fadeInUp { animation-name: fadeInUp; }
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translate3d(0, 100%, 0); }
+  from { opacity: 0; transform: translate3d(0, var(--reveal-shift), 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -178,41 +186,6 @@ summary  { cursor: pointer; }
 }
 .btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-accent); }
 
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 16px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  box-shadow: var(--shadow-sm);
-}
-.pill-dot {
-  position: relative;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .pill-dot::after {
-    content: "";
-    position: absolute;
-    inset: -3px;
-    border-radius: 50%;
-    background: var(--accent);
-    opacity: 0.3;
-    animation: pulse 2s ease-in-out infinite;
-  }
-}
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 0.3; }
-  50%      { transform: scale(1.6); opacity: 0; }
-}
 
 .card {
   background: var(--surface);
@@ -289,7 +262,6 @@ section > * {
 }
 .hero > * { position: relative; z-index: 1; }
 
-.hero > .pill { margin-bottom: clamp(24px, 4vh, 40px); }
 
 .hero-logo {
   /* Lottie canvas (1640×960) is wider than the static logomark (1172×858);

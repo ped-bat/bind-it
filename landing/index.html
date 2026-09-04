@@ -3,24 +3,95 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bind it — Bind your audio files into a single M4B</title>
-  <meta name="description" content="Native desktop app that merges audio file chapter files (MP3, M4A, M4B) into one M4B with chapters, metadata, and cover art. Offline, private, zero setup.">
+  <title>Bind it - Merge audio files into a single file</title>
+  <meta name="description" content="Native desktop app that merges MP3, M4A, M4B, AAC, WAV, FLAC and WMA into one file with chapters and cover art. Lossless, offline and open source.">
   <meta name="theme-color" content="#FAFAF8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
 
   <link rel="canonical" href="https://bindit.app/">
   <link rel="icon" type="image/svg+xml" href="icons/logomark.svg">
-  <link rel="apple-touch-icon" href="icons/logomark.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
-  <meta property="og:title" content="Bind it — Bind your audio files">
-  <meta property="og:description" content="Merge audio file chapter files into a single M4B with chapters, metadata, and cover art.">
+  <meta property="og:title" content="Bind it - Merge audio files into a single file">
+  <meta property="og:description" content="Merge without re-encoding for no audio quality loss, or compress for smaller files. Chapters and covers baked in. Native, offline and open source.">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bind it">
+  <meta property="og:locale" content="en_GB">
   <meta property="og:url" content="https://bindit.app/">
-  <meta property="og:image" content="https://bindit.app/icons/logomark.svg">
+  <meta property="og:image" content="https://bindit.app/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Bind it — Bind your audio files">
-  <meta name="twitter:description" content="Merge audio file chapter files into a single M4B. Offline, private, zero setup.">
-  <meta name="twitter:image" content="https://bindit.app/icons/logomark.svg">
+  <meta name="twitter:title" content="Bind it - Merge audio files into a single file">
+  <meta name="twitter:description" content="Merge audio files into a single file. Lossless, with chapters and covers baked in. Native, offline and open source.">
+  <meta name="twitter:image" content="https://bindit.app/og.png">
+
+  <style>
+    /* Painted before the stylesheet arrives, so the page never flashes white.
+       Keep these two values in sync with --bg in styles.css. color-scheme
+       also gets the scrollbars and form controls onto the right theme from
+       the first frame. */
+    /* `html`, not `:root` - :root is a pseudo-class (0,1,0) and would outrank
+       the `html` rules in styles.css. background-color, not the `background`
+       shorthand, so it cannot wipe the radial gradient set there. */
+    html { color-scheme: light dark; background-color: #FAFAF8; }
+    @media (prefers-color-scheme: dark) { html { background-color: #131211; } }
+
+    /* Hold the content back until the stylesheet lands, so no unstyled frame
+       is ever shown. styles.css sets opacity back to 1 with a transition, so
+       the reveal fires exactly when styles are ready. */
+    body { opacity: 0; }
+  </style>
+  <noscript><style>body { opacity: 1 !important; }</style></noscript>
+  <script>
+    /* Failsafe: if the stylesheet never arrives, show the page anyway rather
+       than leaving it blank. */
+    addEventListener('DOMContentLoaded', function () {
+      setTimeout(function () {
+        if (getComputedStyle(document.body).opacity === '0') {
+          document.body.style.opacity = '1';
+        }
+      }, 2500);
+    });
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "Bind it",
+        "url": "https://bindit.app/",
+        "image": "https://bindit.app/og.png",
+        "description": "Native desktop app that merges MP3, M4A, M4B, AAC, WAV, FLAC and WMA into one file with chapters and cover art. Lossless, offline and open source.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "macOS, Windows, Linux",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://github.com/ped-bat/bind-it/blob/main/LICENSE",
+        "downloadUrl": "https://github.com/ped-bat/bind-it/releases/latest",
+        "author": { "@type": "Person", "name": "Pedro" }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          { "@type": "Question", "name": "Which file formats does Bind it accept?",
+            "acceptedAnswer": { "@type": "Answer", "text": "MP3, M4A, M4B, AAC, WAV, FLAC and WMA. The output is a single M4B with chapter markers, cover art and metadata - or an MP3 if every input is MP3 and you keep the original codec." } },
+          { "@type": "Question", "name": "Does Bind it work offline?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Everything runs locally. No account, no uploads, no network calls during binding." } },
+          { "@type": "Question", "name": "Are Intel Macs supported?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The macOS build is universal - Apple Silicon and Intel are both covered." } },
+          { "@type": "Question", "name": "Does it handle DRM-protected audio files?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Audible .aax and iTunes .m4p files are not accepted file types, and anything still encrypted cannot be decoded. Bind it works on unprotected files you already own - it does not remove protection." } },
+          { "@type": "Question", "name": "How are chapters detected?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Chapter titles come from filenames by default. You can edit names, order and durations in the review step before binding." } },
+          { "@type": "Question", "name": "Where does the output file go?",
+            "acceptedAnswer": { "@type": "Answer", "text": "You pick the destination when you bind. Bind it never touches the source files." } }
+        ]
+      }
+    ]
+  }
+  </script>
 
   <script type="module" src="/main.js"></script>
 </head>
@@ -32,11 +103,6 @@
 
     <!-- Hero -->
     <section class="hero" id="top" aria-labelledby="hero-heading">
-      <span class="pill reveal-load" data-reveal-delay="0" aria-label="Version 1.0.0, now available">
-        <span class="pill-dot" aria-hidden="true"></span>
-        Version 1.0.0 · Now available
-      </span>
-
       <div class="hero-logo reveal-load" data-reveal-delay="50" id="hero-logo" role="img" aria-label="Bind it logomark">
         <svg class="hero-logo-fallback" aria-hidden="true"><use href="icons/sprite.svg#i-logo"/></svg>
       </div>
@@ -44,77 +110,73 @@
       <h1 class="hero-title reveal-load" data-reveal-delay="100" id="hero-heading">Bind it</h1>
 
       <p class="hero-lede reveal-load" data-reveal-delay="150">
-        Merge audio file chapters into one M4B. <strong>Chapters, metadata, cover art — all baked in.</strong> Native. Offline. Instant.
+        <span>Merge audio files into a single file</span>
+        <span><strong>Lossless, with chapters and covers baked in</strong></span>
+        <span>Native, offline and open source</span>
       </p>
 
       <div class="download reveal-load" data-reveal-delay="200">
-        <a href="#download" class="btn btn-primary" id="primary-download" data-os="macos" aria-label="Download Bind it">
+        <a href="#download" class="btn btn-primary" id="primary-download" data-os="macos">
           <svg class="icon-brand" id="primary-download-icon" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
           <span id="primary-download-label">Download for macOS</span>
         </a>
 
-        <div class="download-alt" id="download-alt" aria-label="Other platforms">
+        <div class="download-alt" id="download-alt" role="group" aria-label="Other platforms">
           <span class="alt-label">Also for</span>
           <a href="#download" data-os="macos">
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
             macOS
           </a>
+          <span class="alt-sep" aria-hidden="true">·</span>
           <a href="#download" data-os="windows">
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
             Windows
           </a>
+          <span class="alt-sep" aria-hidden="true">·</span>
           <a href="#download" data-os="linux">
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
             Linux
           </a>
         </div>
 
-        <span class="download-meta" id="download-meta">Apple Silicon · Free · Zero setup</span>
       </div>
 
-      <figure class="hero-shot" aria-hidden="true">
-        <img class="reveal-load" data-reveal-delay="250" src="icons/image-placeholder.svg" alt="" loading="lazy" width="860" height="538">
+      <figure class="hero-shot">
+        <picture>
+          <source srcset="app-screenshot.webp" type="image/webp">
+          <img class="reveal-load" data-reveal-delay="250" src="app-screenshot.png"
+               alt="Bind it with an audiobook loaded: seven chapters listed with their durations and file sizes, and the cover art below."
+               loading="lazy" width="1624" height="1210">
+        </picture>
       </figure>
     </section>
 
     <!-- Features -->
     <section id="features" aria-labelledby="features-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">Features</p>
-        <h2 class="section-title reveal" id="features-heading">Built <em>for audio files</em>.</h2>
-        <p class="section-lede reveal">Bind it picks the fastest path. Remux when it can. Transcode only when it must.</p>
+        <h2 class="section-title reveal" id="features-heading">Built for <em>audiobooks</em></h2>
       </header>
 
       <ul class="grid grid-features">
         <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-package"/></svg>
-          <h3>Zero setup</h3>
-          <p>ffmpeg bundled in. Download, open, bind. Nothing else to install.</p>
-        </li>
-        <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-zap"/></svg>
-          <h3>Lossless remux</h3>
-          <p>AAC files join directly, with no re-encoding. Near-instant. Bit-perfect.</p>
-        </li>
-        <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-cpu"/></svg>
-          <h3>Parallel transcoding</h3>
-          <p>MP3s convert to AAC across every CPU core. Hours of audio in minutes.</p>
-        </li>
-        <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-bookmark"/></svg>
-          <h3>Chapters &amp; metadata</h3>
-          <p>Title, author, cover art — auto-detected, fully editable. Chapters made from filenames.</p>
-        </li>
-        <li class="card reveal">
-          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-pointer"/></svg>
-          <h3>Drag &amp; drop</h3>
-          <p>Drop files or a folder. Drag to reorder. Bitrate from 64 to 320 kbps.</p>
+          <h3>Lossless options</h3>
+          <p>Merge without re-encoding for no audio quality loss, or choose to compress for smaller file sizes.</p>
         </li>
         <li class="card reveal">
           <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-shield"/></svg>
           <h3>Offline &amp; private</h3>
-          <p>No uploads. No accounts. No tracking. Your files stay on your machine.</p>
+          <p>No account needed, no uploads, no cookies, no ads, no subscriptions. Files are processed locally.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-bookmark"/></svg>
+          <h3>Chapters &amp; metadata</h3>
+          <p>Every file becomes a chapter marker. Title, author and cover art are read from your files and stay editable right up until you bind.</p>
+        </li>
+        <li class="card reveal">
+          <svg class="icon-feature" aria-hidden="true"><use href="icons/sprite.svg#i-code"/></svg>
+          <h3>Free and open source</h3>
+          <p>MIT licensed, with every line public on GitHub. It was useful for me, I thought it could be useful for you too.</p>
         </li>
       </ul>
     </section>
@@ -122,26 +184,24 @@
     <!-- How -->
     <section id="how" aria-labelledby="how-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">Workflow</p>
-        <h2 class="section-title reveal" id="how-heading">Three steps. <em>One M4B.</em></h2>
-        <p class="section-lede reveal">From folder to finished audio file in under a minute.</p>
+        <h2 class="section-title reveal" id="how-heading"><em>Easy</em> to use</h2>
       </header>
 
       <ol class="steps reveal">
         <li class="step">
           <span class="step-number" aria-hidden="true">1</span>
-          <h3>Drop</h3>
-          <p>Drag your chapter files onto Bind it.</p>
+          <h3>Add files</h3>
+          <p>Drag and drop, or pick files and folders</p>
         </li>
         <li class="step">
           <span class="step-number" aria-hidden="true">2</span>
           <h3>Review</h3>
-          <p>Reorder, edit metadata, pick a bitrate.</p>
+          <p>Reorder chapters, rename, set cover, metadata and format</p>
         </li>
         <li class="step">
           <span class="step-number" aria-hidden="true">3</span>
-          <h3>Bind</h3>
-          <p>One click. Out comes your M4B.</p>
+          <h3>Bind it</h3>
+          <p>One click and your file is ready</p>
         </li>
       </ol>
     </section>
@@ -149,14 +209,13 @@
     <!-- FAQ -->
     <section id="faq" aria-labelledby="faq-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">FAQ</p>
-        <h2 class="section-title reveal" id="faq-heading">Common <em>questions</em>.</h2>
+        <h2 class="section-title reveal" id="faq-heading">Common <em>questions</em></h2>
       </header>
 
       <div class="faq">
         <details class="reveal">
           <summary>Which file formats does Bind it accept?</summary>
-          <p>MP3, M4A and M4B inputs. Output is always a single M4B with chapter markers, cover art and metadata.</p>
+          <p>MP3, M4A, M4B, AAC, WAV, FLAC and WMA. The output is a single M4B with chapter markers, cover art and metadata - or an MP3 if every input is MP3 and you keep the original codec.</p>
         </details>
         <details class="reveal">
           <summary>Does Bind it work offline?</summary>
@@ -164,11 +223,11 @@
         </details>
         <details class="reveal">
           <summary>Are Intel Macs supported?</summary>
-          <p>The macOS build is universal — Apple Silicon and Intel are both covered.</p>
+          <p>The macOS build is universal - Apple Silicon and Intel are both covered.</p>
         </details>
         <details class="reveal">
           <summary>Does it handle DRM-protected audio files?</summary>
-          <p>No. Bind it only processes unprotected audio files that you own.</p>
+          <p>No. Audible <code>.aax</code> and iTunes <code>.m4p</code> files are not accepted file types, and anything still encrypted cannot be decoded. Bind it works on unprotected files you already own - it does not remove protection.</p>
         </details>
         <details class="reveal">
           <summary>How are chapters detected?</summary>
@@ -184,73 +243,79 @@
     <!-- Download -->
     <section id="download" class="section-alt" aria-labelledby="download-heading">
       <header class="section-head">
-        <p class="eyebrow reveal">Download</p>
-        <h2 class="section-title reveal" id="download-heading">Get <em>Bind it</em>.</h2>
-        <p class="section-lede reveal">Free. MIT-licensed. Grab the build for your platform.</p>
+        <h2 class="section-title reveal" id="download-heading">Download <em>Bind it</em></h2>
+        <p class="section-lede reveal">Free and open source</p>
       </header>
 
-      <ul class="grid grid-download">
-        <li>
-          <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-macOS.dmg" rel="noopener" download>
-            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
-            <span>
-              <span class="card-title">macOS</span>
-              <span class="card-sub">Universal · .dmg</span>
-            </span>
-          </a>
-        </li>
-        <li>
-          <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Windows.msi" rel="noopener" download>
-            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
-            <span>
-              <span class="card-title">Windows</span>
-              <span class="card-sub">x64 · .msi</span>
-            </span>
-          </a>
-        </li>
-        <li>
-          <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Linux.AppImage" rel="noopener" download>
-            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
-            <span>
-              <span class="card-title">Linux</span>
-              <span class="card-sub">x86_64 · AppImage</span>
-            </span>
-          </a>
-        </li>
-      </ul>
-      <p class="download-note reveal">
-        Windows may show a SmartScreen warning on first install — click <strong>More info</strong> → <strong>Run anyway</strong>. The app is open source; you can review or build it yourself from <a href="https://github.com/ped-bat/bind-it" rel="noopener">GitHub</a>.
-      </p>
+      <div class="dl-block">
+        <ul class="grid grid-download">
+          <li>
+            <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-macOS.dmg" rel="noopener">
+              <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
+              <span>
+                <span class="card-title">macOS</span>
+                <span class="card-sub">Universal · .dmg</span>
+              </span>
+            </a>
+          </li>
+          <li>
+            <a class="card card-link reveal" data-os="windows" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Windows.msi" rel="noopener">
+              <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
+              <span>
+                <span class="card-title">Windows</span>
+                <span class="card-sub">x64 · .msi</span>
+              </span>
+            </a>
+          </li>
+          <li>
+            <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Linux.AppImage" rel="noopener">
+              <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
+              <span>
+                <span class="card-title">Linux</span>
+                <span class="card-sub">x86_64 · AppImage</span>
+              </span>
+            </a>
+          </li>
+        </ul>
+        <p class="download-note">
+          Windows may show a SmartScreen warning on first install - click <strong>More info</strong> → <strong>Run anyway</strong>.
+        </p>
+      </div>
     </section>
 
-    <!-- Feedback -->
-    <section id="report" class="feedback" aria-labelledby="feedback-heading">
-      <p class="eyebrow reveal">Feedback</p>
-      <h2 class="section-title reveal" id="feedback-heading">Found a <em>bug</em>?</h2>
-      <p class="section-lede reveal">Open an issue on GitHub, or drop us an email.</p>
-      <a class="btn btn-primary reveal" href="https://github.com/ped-bat/bind-it/issues/new" rel="noopener">
-        <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-github"/></svg>
-        Open an issue
-      </a>
-      <p class="feedback-mail reveal">
-        <a href="mailto:hello@bindit.app?subject=Bind it%20bug%20report">
-          <svg aria-hidden="true"><use href="icons/sprite.svg#i-send"/></svg>
-          hello@bindit.app
-        </a>
-      </p>
+    <!-- Support and feedback, folded into one strip above the footer -->
+    <section id="support" class="strip-section" aria-label="Support and feedback">
+      <div class="strip">
+        <p class="strip-note reveal">
+          <span>If you found this software useful you can buy me a coffee.</span>
+          <span>If you found any issues, please report them.</span>
+        </p>
+        <div class="strip-actions reveal">
+          <!-- TODO: point this at the real donation link (Buy Me a Coffee / Ko-fi / PayPal). -->
+          <a class="btn btn-primary btn-compact" id="donate" href="#" rel="noopener">
+            <svg class="icon-line" aria-hidden="true"><use href="icons/sprite.svg#i-coffee"/></svg>
+            Buy me a coffee
+          </a>
+          <a class="btn btn-ghost btn-compact" href="https://github.com/ped-bat/bind-it/issues/new" rel="noopener">
+            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-github"/></svg>
+            Report an issue
+          </a>
+        </div>
+      </div>
     </section>
 
   </main>
 
   <!-- Footer -->
   <footer>
-    <nav class="footer-links" aria-label="Footer">
-      <a href="https://github.com/ped-bat/bind-it" rel="noopener">GitHub</a>
-      <a href="https://github.com/ped-bat/bind-it/releases" rel="noopener">Releases</a>
-      <a href="https://github.com/ped-bat/bind-it/blob/main/LICENSE" rel="noopener">MIT License</a>
-      <a href="mailto:hello@bindit.app">Contact</a>
-    </nav>
-    <p>© <span id="year">2026</span> Bind it · v1.0.0 · Created by Pedro</p>
+    <div class="footer-inner">
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://github.com/ped-bat/bind-it" rel="noopener">GitHub</a>
+        <a href="https://github.com/ped-bat/bind-it/blob/main/LICENSE" rel="noopener">MIT License</a>
+        <a href="mailto:hello@bindit.app">Contact</a>
+      </nav>
+      <p>© <span id="year">2026</span> Bind it · Created by Pedro</p>
+    </div>
   </footer>
 
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>

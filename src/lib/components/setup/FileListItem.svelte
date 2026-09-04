@@ -136,6 +136,11 @@
     white-space: nowrap;
   }
 
-  .file-duration { min-width: 40px; }
-  .file-size { min-width: 56px; }
+  /* These reserve each column's width so the codec badge stays in line down
+     the list. The old 40px/56px were under-sized: "1:09:08" needs 45.4px and
+     overflowed, shoving the badge left on any chapter over an hour. Measured
+     at 12px, the widest realistic values are "12:09:08" (53.1px) and
+     "999.9 MB" (56.3px). */
+  .file-duration { min-width: 56px; }
+  .file-size { min-width: 60px; }
 </style>

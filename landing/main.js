@@ -6,14 +6,18 @@ import '@fontsource/inter/latin-700.css';
 import '@fontsource/instrument-serif/latin-400.css';
 import '@fontsource/instrument-serif/latin-400-italic.css';
 
-import lottie from 'lottie-web';
-import animationData from './animations/intro.json';
+// Always open at the top. Left on 'auto', the browser restores the previous
+// offset on reload, and any late layout shift (a webfont swapping in, an
+// image settling) makes scroll anchoring nudge that saved position - which
+// then compounds across refreshes.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 
 const SPRITE = 'icons/sprite.svg';
-const ANIM_CLASSES = ['animate__animated', 'animate__fadeInUp'];
 
+/* How long the hero logo holds on its first frame before playing. */
+const HERO_LOGO_DELAY_MS = 250;
 function reveal(el) {
-  el.classList.add(...ANIM_CLASSES);
+  el.classList.add('is-revealed');
 }
 
 /* ── Reveal: hero elements on load ───────────────────────────── */
@@ -51,9 +55,9 @@ if (!('IntersectionObserver' in window)) {
 
 /* ── OS detection for primary download button ────────────────── */
 const OS = {
-  macos:   { label: 'Download for macOS',   arch: 'Apple Silicon · Universal build', icon: 'i-apple' },
-  windows: { label: 'Download for Windows', arch: 'x64 · Windows 10+',                icon: 'i-windows' },
-  linux:   { label: 'Download for Linux',   arch: 'AppImage · x86_64',                icon: 'i-linux' },
+  macos:   { label: 'Download for macOS',   icon: 'i-apple' },
+  windows: { label: 'Download for Windows', icon: 'i-windows' },
+  linux:   { label: 'Download for Linux',   icon: 'i-linux' },
 };
 
 function detectOS() {
@@ -65,29 +69,39 @@ function detectOS() {
   return null;
 }
 
-const os = detectOS();
+const os = detectOS() || 'macos';
 const primary = document.getElementById('primary-download');
 const primaryLabel = document.getElementById('primary-download-label');
 const primaryIcon = document.getElementById('primary-download-icon');
-const meta = document.getElementById('download-meta');
 const altWrap = document.getElementById('download-alt');
 
-if (os && primary && primaryLabel && primaryIcon && meta) {
+if (os && primary && primaryLabel && primaryIcon) {
   const cfg = OS[os];
   primary.setAttribute('data-os', os);
   primaryLabel.textContent = cfg.label;
-  meta.textContent = cfg.arch;
   const use = primaryIcon.querySelector('use');
   if (use) use.setAttribute('href', `${SPRITE}#${cfg.icon}`);
 
   if (altWrap) {
-    altWrap.setAttribute('data-detected', os);
     const detectedPill = altWrap.querySelector(`a[data-os="${os}"]`);
-    if (detectedPill) detectedPill.hidden = true;
+    if (detectedPill) {
+      detectedPill.hidden = true;
+      // Drop one adjacent separator too, so the remaining two keep exactly
+      // one dot between them.
+      const sep = detectedPill.nextElementSibling?.classList.contains('alt-sep')
+        ? detectedPill.nextElementSibling
+        : detectedPill.previousElementSibling?.classList.contains('alt-sep')
+          ? detectedPill.previousElementSibling
+          : null;
+      if (sep) sep.hidden = true;
+    }
   }
 }
 
-/* ── Hero logo: Lottie intro, tinted to --accent ─────────────── */
+/* ── Hero logo: Lottie intro, tinted to --accent ───────────────
+   Loaded on demand, and from the SVG-only "light" build: the full player
+   is ~340 KB and most of it is the canvas/HTML renderers we never use.
+   The static logomark in the markup stands in until it arrives.        */
 function parseCssColor(css) {
   const s = (css || '').trim();
   if (s.charAt(0) === '#') {
@@ -136,9 +150,14 @@ function tintLottie(data, rgb) {
   return data;
 }
 
-function playHeroLogo() {
+async function playHeroLogo() {
   const container = document.getElementById('hero-logo');
   if (!container) return;
+
+  const [{ default: lottie }, { default: animationData }] = await Promise.all([
+    import('lottie-web/build/player/lottie_light'),
+    import('./animations/intro.json'),
+  ]);
 
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent');
   const rgb = parseCssColor(accent) || [0.831, 0.537, 0.227];
@@ -148,15 +167,23 @@ function playHeroLogo() {
   const fallback = container.querySelector('.hero-logo-fallback');
   if (fallback) fallback.remove();
 
+  // Loaded paused so the first frame is painted, then held briefly before it
+  // plays - it reads better once the page fade has settled.
   const anim = lottie.loadAnimation({
     container,
     renderer: 'svg',
     loop: false,
-    autoplay: !reduced,
+    autoplay: false,
     animationData: tinted,
     rendererSettings: { preserveAspectRatio: 'xMidYMid meet' },
   });
-  if (reduced) anim.goToAndStop(anim.totalFrames - 1, true);
+
+  if (reduced) {
+    anim.goToAndStop(anim.totalFrames - 1, true);
+  } else {
+    anim.goToAndStop(0, true);
+    setTimeout(() => anim.play(), HERO_LOGO_DELAY_MS);
+  }
 }
 
 if (document.readyState === 'loading') {

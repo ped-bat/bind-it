@@ -607,8 +607,19 @@ section > * {
   box-shadow: none;
 }
 
-@media (max-width: 720px) {
-  .strip { flex-direction: column; align-items: flex-start; }
+/* The row wraps from about 880px down, which left-aligned both halves on
+   their own lines. Stack and centre before that can happen. */
+@media (max-width: 900px) {
+  .strip {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .strip-actions { justify-content: center; }
+}
+
+/* Narrow enough that the two buttons no longer sit side by side. */
+@media (max-width: 520px) {
   .strip-actions { width: 100%; }
   .strip-actions .btn { flex: 1 1 auto; justify-content: center; }
 }

@@ -9,6 +9,12 @@ import '@fontsource/instrument-serif/latin-400-italic.css';
 import lottie from 'lottie-web';
 import animationData from './animations/intro.json';
 
+// Always open at the top. Left on 'auto', the browser restores the previous
+// offset on reload, and any late layout shift (a webfont swapping in, an
+// image settling) makes scroll anchoring nudge that saved position - which
+// then compounds across refreshes.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
 const SPRITE = 'icons/sprite.svg';
 
 /* How long the hero logo holds on its first frame before playing. */

@@ -19,7 +19,11 @@ jobs:
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
             sidecar-triples: aarch64-apple-darwin x86_64-apple-darwin
             tauri-args: --target universal-apple-darwin
-          - platform: ubuntu-24.04
+          # Oldest supported LTS on purpose: the AppImage bundles WebKitGTK
+          # but not glibc, so a build made on 24.04 needs glibc 2.39 on the
+          # user's machine and fails to start on Ubuntu 22.04, Debian 12,
+          # Mint 21 and RHEL 9. Built on 22.04 it needs glibc 2.35.
+          - platform: ubuntu-22.04
             label: linux-x86_64
             rust-targets: x86_64-unknown-linux-gnu
             sidecar-triples: x86_64-unknown-linux-gnu

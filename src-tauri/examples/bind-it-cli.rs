@@ -158,11 +158,14 @@ fn collect_books(
     out: &mut Vec<PathBuf>,
 ) {
     let canonical = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
-    if !seen.insert(canonical) {
+    if !seen.insert(canonical.clone()) {
         return;
     }
-    if !folder_audio_files(dir).is_empty() {
-        out.push(dir.to_path_buf());
+    // Absolute paths only: the merge writes them into an ffmpeg concat list
+    // inside a temp dir, where a relative path resolves against the wrong
+    // directory and the concat demuxer silently truncates the output.
+    if !folder_audio_files(&canonical).is_empty() {
+        out.push(canonical);
     }
     // depth==0 always descends one level so "give me a library dir" works.
     let descend = recursive || depth == 0;

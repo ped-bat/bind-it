@@ -236,6 +236,13 @@ pub fn run_ffmpeg_with_progress<F: Fn(f64)>(
         let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
         return Err(format!("ffmpeg {} failed: {}", op_label, stderr));
     }
+    // The concat demuxer logs these, stops reading, and still exits 0 when a
+    // later list entry cannot be opened or demuxed — leaving a truncated
+    // output that would otherwise be reported as a success.
+    let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
+    if stderr.contains("Impossible to open") || stderr.contains("Error during demuxing") {
+        return Err(format!("ffmpeg {} failed: {}", op_label, stderr));
+    }
     if total_duration > 0.0 {
         on_progress(total_duration);
     }

@@ -25,6 +25,7 @@
   --text-faint: #716C65;
   --accent: #D4893A;
   --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --glow-pulse: color-mix(in srgb, var(--accent) 34%, transparent);
 
   --shadow-sm: 0 1px 2px rgba(26, 25, 24, 0.04);
   --shadow-md: 0 4px 16px rgba(26, 25, 24, 0.08);
@@ -66,6 +67,7 @@
     --text-faint: #8A857D;
     --accent: #E09A4C;
     --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--bg));
+    --glow-pulse: color-mix(in srgb, var(--accent) 40%, transparent);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.45);
@@ -113,7 +115,9 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(ellipse 60% 42% at 50% 0%, var(--accent-soft), transparent 70%);
+  /* Deliberately richer than the static glow: that one is a 14% tint, and
+     breathing a 14% tint on top of itself is imperceptible. */
+  background: radial-gradient(ellipse 60% 42% at 50% 0%, var(--glow-pulse), transparent 70%);
   opacity: 0;
   animation: breathe 8s ease-in-out infinite;
 }
@@ -158,6 +162,18 @@ summary  { cursor: pointer; }
   transition: top 120ms var(--ease-out);
 }
 .skip-link:focus-visible { top: 12px; }
+
+/* Visually hidden, still read by screen readers. Used to say a link opens
+   in a new tab, which the eye gets from context but a reader does not. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* Reveal: elements start hidden and main.js adds .is-revealed to fade them
    in. The shift is a fixed distance, not a percentage — a percentage is

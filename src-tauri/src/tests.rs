@@ -4,7 +4,9 @@
 //! merge pipeline end-to-end without requiring any external audio files.
 
 use crate::binaries::{FFMPEG_PATH, FFPROBE_PATH};
-use crate::merge::merge_audio_files_core;
+use crate::concat::concat_aac_files;
+use crate::merge::{merge_audio_files_core, most_common_nonzero, normalization_outliers};
+use crate::transcode::{clamp_aac_bitrate, transcode_parallel};
 use crate::plan::get_merge_plan;
 use crate::probe::probe_all_files;
 use crate::types::{FileEntry, FilePlanInfo, MergeConfig};
@@ -611,4 +613,184 @@ fn merge_lossless_alac_output() {
     assert_eq!(audio["codec_name"].as_str(), Some("alac"),
         "lossless output should be ALAC");
     assert_chapters(&output, 2);
+}
+
+// ── Regression: normalising AAC outliers must match the pass-through files ──
+//
+// Before these, an all-AAC set with one odd file came out truncated (ffmpeg's
+// concat demuxer drops everything after a mid-stream parameter change and
+// still exits 0) or unplayable in Apple's decoder (mono chapter spliced into
+// a stereo stream), and the target rate flipped between runs on ties.
+
+/// Like `gen_sine` but with an explicit channel count (lavfi sine is mono).
+fn gen_sine_ch(path: &Path, seconds: f64, sample_rate: u32, channels: u32) {
+    let sine = format!("sine=frequency=440:duration={seconds}:sample_rate={sample_rate}");
+    let ch = channels.to_string();
+    let out = std::process::Command::new(FFMPEG_PATH.as_str())
+        .args(["-y", "-f", "lavfi", "-i", &sine, "-ac", &ch, "-c:a", "aac", "-b:a", "96k", "-f", "ipod"])
+        .arg(path.to_str().unwrap())
+        .output()
+        .expect("ffmpeg spawn failed");
+    assert!(out.status.success(), "gen_sine_ch failed: {}", String::from_utf8_lossy(&out.stderr));
+}
+
+/// Seconds of audio a player actually gets out of `path`, plus any decoder
+/// complaints. The container duration hides both.
+fn decoded_audio(path: &str) -> (f64, String) {
+    let json = probe_output(path);
+    let sr: f64 = json["streams"][0]["sample_rate"].as_str().unwrap().parse().unwrap();
+    let frames = std::process::Command::new(FFPROBE_PATH.as_str())
+        .args(["-v", "error", "-select_streams", "a:0", "-show_entries", "frame=nb_samples", "-of", "csv=p=0", path])
+        .output()
+        .expect("ffprobe spawn failed");
+    let samples: u64 = String::from_utf8_lossy(&frames.stdout)
+        .lines()
+        .filter_map(|l| l.trim().parse::<u64>().ok())
+        .sum();
+    let decode = std::process::Command::new(FFMPEG_PATH.as_str())
+        .args(["-v", "error", "-i", path, "-f", "null", "-"])
+        .output()
+        .expect("ffmpeg spawn failed");
+    (samples as f64 / sr, String::from_utf8_lossy(&decode.stderr).trim().to_string())
+}
+
+fn stream_params(path: &str) -> (u32, u32) {
+    let json = probe_output(path);
+    let s = &json["streams"][0];
+    (
+        s["sample_rate"].as_str().unwrap().parse().unwrap(),
+        s["channels"].as_u64().unwrap() as u32,
+    )
+}
+
+#[test]
+fn most_common_nonzero_tie_is_deterministic() {
+    for _ in 0..50 {
+        assert_eq!(most_common_nonzero([44_100u32, 22_050], 0), 44_100);
+        assert_eq!(most_common_nonzero([2u32, 1], 0), 2);
+    }
+    assert_eq!(most_common_nonzero([22_050u32, 22_050, 44_100], 0), 22_050);
+    assert_eq!(most_common_nonzero([0u32, 0], 7), 7);
+}
+
+#[test]
+fn normalization_outliers_flag_channel_and_rate_mismatches() {
+    let mk = |sr: u32, ch: u32| AudioFileInfoBuilder { sr, ch }.build();
+    let probed = vec![mk(44_100, 2), mk(44_100, 1), mk(22_050, 2), mk(44_100, 2)];
+    assert_eq!(normalization_outliers(&probed, 44_100, 2), vec![1, 2]);
+    assert!(normalization_outliers(&probed[..1], 44_100, 2).is_empty());
+}
+
+struct AudioFileInfoBuilder { sr: u32, ch: u32 }
+impl AudioFileInfoBuilder {
+    fn build(self) -> crate::types::AudioFileInfo {
+        crate::types::AudioFileInfo {
+            path: String::new(), filename: String::new(), chapter_name: String::new(),
+            codec: "aac".into(), duration: 1.0, sample_rate: self.sr, channels: self.ch,
+            bitrate: Some(96_000), title: None, artist: None, album: None, narrator: None,
+            year: None, file_size: 0,
+        }
+    }
+}
+
+#[test]
+fn clamp_aac_bitrate_respects_low_rate_ceilings() {
+    // Measured aac_at limits: 22.05 kHz mono opens at 64k, not 66k.
+    assert_eq!(clamp_aac_bitrate("128k", 22_050, 1), "63k");
+    assert_eq!(clamp_aac_bitrate("320k", 22_050, 2), "127k");
+    assert_eq!(clamp_aac_bitrate("320k", 44_100, 2), "308k");
+    assert_eq!(clamp_aac_bitrate("64k", 44_100, 1), "64k");
+    assert_eq!(clamp_aac_bitrate("abc", 44_100, 1), "abc");
+}
+
+#[test]
+fn transcode_honours_exact_low_sample_rate_and_channels() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src.m4a");
+    gen_sine_ch(&src, 1.0, 44_100, 1);
+    let items = vec![(0usize, src.to_string_lossy().to_string())];
+    let emit = |_: crate::types::Stage, _: f64, _: &str| {};
+
+    let exact = transcode_parallel(&items, tmp.path(), "aac", "128k", Some("2"), Some(22_050), true, &[1.0], &emit, 0.0, 1.0)
+        .expect("transcode failed");
+    assert_eq!(stream_params(exact[0].to_str().unwrap()), (22_050, 2));
+
+    let floored_dir = tmp.path().join("floored");
+    std::fs::create_dir(&floored_dir).unwrap();
+    let floored = transcode_parallel(&items, &floored_dir, "aac", "128k", Some("2"), Some(22_050), false, &[1.0], &emit, 0.0, 1.0)
+        .expect("transcode failed");
+    assert_eq!(stream_params(floored[0].to_str().unwrap()), (44_100, 2));
+}
+
+#[test]
+fn merge_aac_low_rate_majority_keeps_every_chapter() {
+    // 1 × 44.1 kHz + 3 × 22.05 kHz stereo: the outlier must be re-encoded at
+    // 22.05 kHz (not floored to 44.1 kHz), else the merge loses 3 chapters.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    for (i, sr) in [44_100u32, 22_050, 22_050, 22_050].iter().enumerate() {
+        let p = tmp.path().join(format!("{:02}_chapter.m4a", i + 1));
+        gen_sine_ch(&p, 2.0, *sr, 2);
+        paths.push(p.to_string_lossy().to_string());
+    }
+    let output = run_merge(test_config(&paths, tmp.path(), "low_rate"));
+    assert_chapters(&output, 4);
+    assert_eq!(stream_params(&output), (22_050, 2));
+    let (secs, errors) = decoded_audio(&output);
+    assert!(errors.is_empty(), "decoder errors:\n{errors}");
+    assert!((secs - 8.0).abs() < 0.5, "decoded {secs}s, expected ~8s");
+}
+
+#[test]
+fn merge_aac_outlier_matches_neighbours_not_mono_setting() {
+    // 3 stereo 44.1 kHz + 1 stereo 22.05 kHz, with the compress-mode `mono`
+    // flag left on (the UI hides it on this path but still sends it): the
+    // re-encoded outlier must be stereo like the files it sits between.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    for (i, sr) in [44_100u32, 44_100, 44_100, 22_050].iter().enumerate() {
+        let p = tmp.path().join(format!("{:02}_chapter.m4a", i + 1));
+        gen_sine_ch(&p, 2.0, *sr, 2);
+        paths.push(p.to_string_lossy().to_string());
+    }
+    let mut config = test_config(&paths, tmp.path(), "outlier_stereo");
+    config.mono = true;
+    let output = run_merge(config);
+    assert_chapters(&output, 4);
+    assert_eq!(stream_params(&output), (44_100, 2));
+    let (secs, errors) = decoded_audio(&output);
+    assert!(errors.is_empty(), "decoder errors:\n{errors}");
+    assert!((secs - 8.0).abs() < 0.5, "decoded {secs}s, expected ~8s");
+}
+
+#[test]
+fn merge_aac_mono_chapter_among_stereo_is_reencoded() {
+    // Same sample rate everywhere, one mono chapter: previously stream-copied
+    // straight in, which Apple's decoder rejects. Now it is an outlier.
+    let tmp = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    for (i, ch) in [2u32, 2, 1, 2].iter().enumerate() {
+        let p = tmp.path().join(format!("{:02}_chapter.m4a", i + 1));
+        gen_sine_ch(&p, 2.0, 44_100, *ch);
+        paths.push(p.to_string_lossy().to_string());
+    }
+    let probed = probe_all_files(paths.clone()).unwrap();
+    assert_eq!(normalization_outliers(&probed, 44_100, 2), vec![2]);
+    let output = run_merge(test_config(&paths, tmp.path(), "mono_outlier"));
+    assert_chapters(&output, 4);
+    let (secs, errors) = decoded_audio(&output);
+    assert!(errors.is_empty(), "decoder errors:\n{errors}");
+    assert!((secs - 8.0).abs() < 0.5, "decoded {secs}s, expected ~8s");
+}
+
+#[test]
+fn concat_with_unreadable_entry_is_an_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = make_fixtures(tmp.path(), 1, "aac");
+    let files = vec![
+        std::path::PathBuf::from(&paths[0]),
+        tmp.path().join("missing.m4a"),
+    ];
+    let result = concat_aac_files(&files, tmp.path());
+    assert!(result.is_err(), "concat demuxer failure was swallowed (exit 0, truncated output)");
 }

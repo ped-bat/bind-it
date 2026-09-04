@@ -6,7 +6,7 @@ use crate::concat::{
 use rayon::prelude::*;
 use crate::probe::probe_all_files;
 use crate::transcode::transcode_parallel;
-use crate::types::{MergeConfig, MergeProgress, Stage};
+use crate::types::{AudioFileInfo, MergeConfig, MergeProgress, Stage};
 use crate::util::{
     categorize_error, is_temp_path, path_str, unique_output_path,
     validate_concat_path, validate_filename,
@@ -20,11 +20,13 @@ use std::sync::atomic::Ordering;
 use tauri::Emitter;
 
 /// Returns the most frequent value across `iter` (filtering out items mapped
-/// to `0`), or `default` if no items are present.
-fn most_common_nonzero<I, T>(iter: I, default: T) -> T
+/// to `0`), or `default` if no items are present. Ties resolve to the larger
+/// value: HashMap iteration order is randomised per process, so without an
+/// explicit rule a two-file set would pick a different target on every run.
+pub fn most_common_nonzero<I, T>(iter: I, default: T) -> T
 where
     I: IntoIterator<Item = T>,
-    T: Eq + Hash + Copy + Default + PartialEq,
+    T: Eq + Hash + Copy + Default + Ord,
 {
     let mut counts: HashMap<T, u32> = HashMap::new();
     for v in iter {
@@ -32,7 +34,39 @@ where
             *counts.entry(v).or_insert(0) += 1;
         }
     }
-    counts.into_iter().max_by_key(|&(_, c)| c).map(|(v, _)| v).unwrap_or(default)
+    counts.into_iter().max_by_key(|&(v, c)| (c, v)).map(|(v, _)| v).unwrap_or(default)
+}
+
+/// Indices of files whose stream parameters differ from the ones the
+/// pass-through files impose on the concatenated stream. Both sample rate and
+/// channel count matter: the concat demuxer copies packets verbatim, so a
+/// mono chapter between stereo ones yields a file Apple's decoder rejects.
+pub fn normalization_outliers(probed: &[AudioFileInfo], target_sr: u32, target_ch: u32) -> Vec<usize> {
+    probed
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.sample_rate != target_sr || p.channels != target_ch)
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Bitrate (kbps) to re-encode outliers at on a preserve path: the average of
+/// the files kept as-is, so a re-encoded chapter matches its neighbours rather
+/// than the compress-mode setting (which the UI hides on this path). Falls
+/// back to `fallback_kbps` when no pass-through file reports a bitrate.
+fn passthrough_bitrate(probed: &[AudioFileInfo], outliers: &[usize], fallback_kbps: u32) -> u32 {
+    let rates: Vec<u64> = probed
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !outliers.contains(i))
+        .filter_map(|(_, p)| p.bitrate)
+        .filter(|&b| b > 0)
+        .collect();
+    if rates.is_empty() {
+        return fallback_kbps.clamp(32, 320);
+    }
+    let avg_kbps = (rates.iter().sum::<u64>() / rates.len() as u64 / 1000) as u32;
+    avg_kbps.clamp(32, 320)
 }
 
 /// Core merge logic, callable without Tauri. The `emit` closure receives progress updates.
@@ -130,7 +164,7 @@ where
 
         let transcoded = transcode_parallel(
             &all_items, tmp_dir.path(), "alac", &bitrate_arg, Some(&target_ch_str),
-            Some(target_sr), &durations, &emit, 5.0, 90.0,
+            Some(target_sr), true, &durations, &emit, 5.0, 90.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -203,18 +237,24 @@ where
         )?;
 
     } else if all_aac {
+        // The pass-through files fix the stream parameters; every outlier is
+        // re-encoded to exactly those (rate *and* channels — see
+        // normalization_outliers), at a bitrate matching its neighbours.
         let target_sr = most_common_nonzero(probed.iter().map(|p| p.sample_rate), 44_100);
+        let target_ch = most_common_nonzero(probed.iter().map(|p| p.channels), 2);
+        let target_ch_str = target_ch.to_string();
+        let outliers = normalization_outliers(&probed, target_sr, target_ch);
+        let outlier_bitrate_arg = format!("{}k", passthrough_bitrate(&probed, &outliers, config.bitrate));
 
         emit(Stage::Transcoding, 5.0, "Normalizing sample rates");
 
-        let mismatched_items: Vec<(usize, String)> = config.files.iter().enumerate()
-            .filter(|(i, _)| probed[*i].sample_rate != target_sr)
-            .map(|(i, f)| (i, f.path.clone()))
+        let mismatched_items: Vec<(usize, String)> = outliers.iter()
+            .map(|&i| (i, config.files[i].path.clone()))
             .collect();
 
         let transcoded = transcode_parallel(
-            &mismatched_items, tmp_dir.path(), aac_encoder(), &bitrate_arg, Some(channels_arg),
-            Some(target_sr), &durations, &emit, 5.0, 90.0,
+            &mismatched_items, tmp_dir.path(), aac_encoder(), &outlier_bitrate_arg, Some(&target_ch_str),
+            Some(target_sr), true, &durations, &emit, 5.0, 90.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -344,7 +384,7 @@ where
 
         let transcoded = transcode_parallel(
             &outlier_items, tmp_dir.path(), "libmp3lame", "0k", Some(&target_ch_str),
-            Some(target_sr), &durations, &emit, 5.0, 85.0,
+            Some(target_sr), true, &durations, &emit, 5.0, 85.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -502,7 +542,7 @@ where
 
         let transcoded = transcode_parallel(
             &mismatched_items, tmp_dir.path(), "alac", &bitrate_arg, Some(&target_ch_str),
-            Some(target_sr), &durations, &emit, 5.0, 90.0,
+            Some(target_sr), true, &durations, &emit, 5.0, 90.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -555,8 +595,13 @@ where
                 .map(|(i, f)| (i, f.path.clone()))
                 .collect();
 
+            // AAC files only pass through when they already match what the
+            // transcoded files will be: the target rate and the chosen
+            // channel count. Anything else is re-encoded too.
+            let transcoded_ch: u32 = if config.mono { 1 } else { 2 };
             let mismatched_aac_items: Vec<(usize, String)> = config.files.iter().enumerate()
-                .filter(|(i, _)| probed[*i].codec == "aac" && probed[*i].sample_rate != target_sr)
+                .filter(|(i, _)| probed[*i].codec == "aac"
+                    && (probed[*i].sample_rate != target_sr || probed[*i].channels != transcoded_ch))
                 .map(|(i, f)| (i, f.path.clone()))
                 .collect();
 
@@ -567,7 +612,7 @@ where
 
         let transcoded = transcode_parallel(
             &all_items, tmp_dir.path(), aac_encoder(), &bitrate_arg, Some(channels_arg),
-            Some(target_sr), &durations, &emit, 5.0, 90.0,
+            Some(target_sr), !force, &durations, &emit, 5.0, 90.0,
         )?;
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
@@ -600,6 +645,25 @@ where
             tmp_dir.path(),
             output_format,
         )?;
+    }
+
+    // Defence in depth: ffmpeg's concat demuxer stops at the first entry it
+    // cannot read and still exits 0, so a file missing whole chapters would
+    // otherwise be reported as a success. Tolerance is generous because
+    // input durations are ffprobe estimates (VBR MP3 without a Xing header
+    // can be off by a few percent) — this only catches losing real chunks.
+    let expected_secs: f64 = durations.iter().sum();
+    if expected_secs > 0.0 {
+        if let Ok(actual) = crate::probe::probe_single_file(output_str).map(|p| p.duration) {
+            let shortfall = expected_secs - actual;
+            if shortfall > 10.0 && actual < expected_secs * 0.8 {
+                let _ = fs::remove_file(output_str);
+                return Err(format!(
+                    "Output came out much shorter than its chapters ({:.0}s of {:.0}s), so it was discarded rather than saved incomplete. Re-add your files and try again.",
+                    actual, expected_secs
+                ));
+            }
+        }
     }
 
     if let Some(ref cover_path) = config.cover_art_path {

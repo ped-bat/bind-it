@@ -1,0 +1,14 @@
+# Deployed to the site root by the landing workflow.
+#
+# Every asset Vite emits is content-hashed, so those can be cached forever.
+# The only file that ever goes stale is index.html (and the crawler files),
+# so ask every cache in front of us - SiteGround's dynamic cache and CDN
+# included - to revalidate those on each request instead of holding them.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|xml|txt)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+  <FilesMatch "\.(js|css|woff2?|png|webp|svg)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>

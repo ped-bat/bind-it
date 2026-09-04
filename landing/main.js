@@ -10,6 +10,9 @@ import lottie from 'lottie-web';
 import animationData from './animations/intro.json';
 
 const SPRITE = 'icons/sprite.svg';
+
+/* How long the hero logo holds on its first frame before playing. */
+const HERO_LOGO_DELAY_MS = 250;
 const ANIM_CLASSES = ['animate__animated', 'animate__fadeInUp'];
 
 function reveal(el) {
@@ -156,15 +159,23 @@ function playHeroLogo() {
   const fallback = container.querySelector('.hero-logo-fallback');
   if (fallback) fallback.remove();
 
+  // Loaded paused so the first frame is painted, then held briefly before it
+  // plays - it reads better once the page fade has settled.
   const anim = lottie.loadAnimation({
     container,
     renderer: 'svg',
     loop: false,
-    autoplay: !reduced,
+    autoplay: false,
     animationData: tinted,
     rendererSettings: { preserveAspectRatio: 'xMidYMid meet' },
   });
-  if (reduced) anim.goToAndStop(anim.totalFrames - 1, true);
+
+  if (reduced) {
+    anim.goToAndStop(anim.totalFrames - 1, true);
+  } else {
+    anim.goToAndStop(0, true);
+    setTimeout(() => anim.play(), HERO_LOGO_DELAY_MS);
+  }
 }
 
 if (document.readyState === 'loading') {

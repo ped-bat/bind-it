@@ -29,8 +29,11 @@
        Keep these two values in sync with --bg in styles.css. color-scheme
        also gets the scrollbars and form controls onto the right theme from
        the first frame. */
-    :root { color-scheme: light dark; background: #FAFAF8; }
-    @media (prefers-color-scheme: dark) { :root { background: #131211; } }
+    /* `html`, not `:root` - :root is a pseudo-class (0,1,0) and would outrank
+       the `html` rules in styles.css. background-color, not the `background`
+       shorthand, so it cannot wipe the radial gradient set there. */
+    html { color-scheme: light dark; background-color: #FAFAF8; }
+    @media (prefers-color-scheme: dark) { html { background-color: #131211; } }
 
     /* Hold the content back until the stylesheet lands, so no unstyled frame
        is ever shown. styles.css sets opacity back to 1 with a transition, so

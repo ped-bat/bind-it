@@ -95,6 +95,11 @@ html {
 }
 
 body {
+  /* Counterpart to the inline `body { opacity: 0 }` in index.html: the page
+     fades in the moment this stylesheet applies. */
+  opacity: 1;
+  transition: opacity 260ms var(--ease-out);
+
   font-family: var(--font-body);
   background: transparent;
   color: var(--text);

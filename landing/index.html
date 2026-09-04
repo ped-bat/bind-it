@@ -31,7 +31,24 @@
        the first frame. */
     :root { color-scheme: light dark; background: #FAFAF8; }
     @media (prefers-color-scheme: dark) { :root { background: #131211; } }
+
+    /* Hold the content back until the stylesheet lands, so no unstyled frame
+       is ever shown. styles.css sets opacity back to 1 with a transition, so
+       the reveal fires exactly when styles are ready. */
+    body { opacity: 0; }
   </style>
+  <noscript><style>body { opacity: 1 !important; }</style></noscript>
+  <script>
+    /* Failsafe: if the stylesheet never arrives, show the page anyway rather
+       than leaving it blank. */
+    addEventListener('DOMContentLoaded', function () {
+      setTimeout(function () {
+        if (getComputedStyle(document.body).opacity === '0') {
+          document.body.style.opacity = '1';
+        }
+      }, 2500);
+    });
+  </script>
 
   <script type="module" src="/main.js"></script>
 </head>

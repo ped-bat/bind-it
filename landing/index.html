@@ -204,6 +204,7 @@
         <p class="section-lede reveal">Free and open source</p>
       </header>
 
+      <div class="dl-block">
       <ul class="grid grid-download">
         <li>
           <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-macOS.dmg" rel="noopener" download>
@@ -215,7 +216,7 @@
           </a>
         </li>
         <li>
-          <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Windows.msi" rel="noopener" download>
+          <a class="card card-link reveal" data-os="windows" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Windows.msi" rel="noopener" download>
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
             <span>
               <span class="card-title">Windows</span>
@@ -233,9 +234,10 @@
           </a>
         </li>
       </ul>
-      <p class="download-note reveal">
+      <p class="download-note" role="status">
         Windows may show a SmartScreen warning on first install - click <strong>More info</strong> → <strong>Run anyway</strong>.
       </p>
+      </div>
     </section>
 
     <!-- Support and feedback, folded into one strip above the footer -->

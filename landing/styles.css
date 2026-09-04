@@ -103,6 +103,24 @@ body {
   overflow-x: hidden;
 }
 
+/* A second copy of the glow, fixed to the viewport, that slowly breathes in
+   opacity over the static one on html. Opacity runs on the compositor and
+   cannot jump between frames the way an animated gradient stop would. It
+   also works on iOS, where background-attachment: fixed does not. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 60% 42% at 50% 0%, var(--accent-soft), transparent 70%);
+  opacity: 0;
+  animation: breathe 8s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% { opacity: 0.7; }
+}
+
 a        { color: var(--accent); text-decoration: none; }
 svg      { display: block; }
 li       { list-style: none; }
@@ -639,6 +657,8 @@ footer {
   transition: color 120ms var(--ease-out);
 }
 .footer-links a:hover { color: var(--accent); }
+.footer-inner p a { color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.footer-inner p a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 
 @media (min-width: 768px) {
   .footer-inner {

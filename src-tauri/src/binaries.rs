@@ -24,6 +24,25 @@ fn find_binary(name: &str) -> String {
             }
         }
     }
+    // Debug builds (cargo test, the dev CLI) run from target/debug/deps or
+    // target/debug/examples, where tauri-build does not copy the sidecars.
+    // Use the ones fetch-binaries.sh put in src-tauri/binaries so tests run
+    // against the ffmpeg that ships rather than whatever is on PATH.
+    #[cfg(debug_assertions)]
+    {
+        let triple = env!("BIND_IT_TARGET_TRIPLE");
+        if !triple.is_empty() {
+            let suffix = if cfg!(windows) { ".exe" } else { "" };
+            let sidecar = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join(format!("{}-{}{}", name, triple, suffix));
+            if sidecar.exists() {
+                if let Some(s) = sidecar.to_str() {
+                    return s.to_string();
+                }
+            }
+        }
+    }
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in std::env::split_paths(&path_var) {
             let candidate = dir.join(&exe_name);
@@ -147,6 +166,24 @@ impl Drop for ConvertGuard {
     }
 }
 
+/// Stop an in-flight conversion — the polling loops kill their ffmpeg
+/// children within ~100 ms — and wait for the merge thread to drop its temp
+/// dir, bounded so quitting can never hang. Without this, closing the app
+/// mid-merge left every ffmpeg running at full CPU and the intermediates
+/// (gigabytes for long books) on disk, on all three platforms.
+pub fn abort_conversion(timeout: std::time::Duration) {
+    if !IS_CONVERTING.load(Ordering::SeqCst) {
+        crate::cover::cleanup_extracted_cover();
+        return;
+    }
+    CANCEL_FLAG.store(true, Ordering::SeqCst);
+    let start = std::time::Instant::now();
+    while IS_CONVERTING.load(Ordering::SeqCst) && start.elapsed() < timeout {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    crate::cover::cleanup_extracted_cover();
+}
+
 // ── Generic ffmpeg runner ────────────────────────────────────────────────────
 //
 // Spawns ffmpeg with the given args, drains stderr to a buffer (so the pipe
@@ -240,7 +277,13 @@ pub fn run_ffmpeg_with_progress<F: Fn(f64)>(
     // later list entry cannot be opened or demuxed — leaving a truncated
     // output that would otherwise be reported as a success.
     let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
-    if stderr.contains("Impossible to open") || stderr.contains("Error during demuxing") {
+    const FATAL_MARKERS: [&str; 4] = [
+        "Impossible to open",
+        "Error during demuxing",
+        "Error applying bitstream filters",
+        "Error submitting a packet to the muxer",
+    ];
+    if FATAL_MARKERS.iter().any(|m| stderr.contains(m)) {
         return Err(format!("ffmpeg {} failed: {}", op_label, stderr));
     }
     if total_duration > 0.0 {

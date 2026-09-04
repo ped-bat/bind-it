@@ -5,12 +5,12 @@
 
 use crate::binaries::{FFMPEG_PATH, FFPROBE_PATH};
 use crate::concat::concat_aac_files;
-use crate::merge::{merge_audio_files_core, most_common_nonzero, normalization_outliers};
+use crate::merge::{merge_audio_files_core, most_common_nonzero, StreamTarget};
 use crate::transcode::{clamp_aac_bitrate, transcode_parallel};
 use crate::plan::get_merge_plan;
 use crate::probe::probe_all_files;
 use crate::types::{FileEntry, FilePlanInfo, MergeConfig};
-use crate::util::{clean_chapter_name, is_windows_reserved_name, strip_output_extension, validate_filename};
+use crate::util::{clean_chapter_name, escape_ffmetadata, is_windows_reserved_name, natural_cmp, strip_output_extension, validate_filename};
 use std::path::Path;
 
 /// Generate a sine-wave audio file in `codec` format at `path`.
@@ -674,23 +674,31 @@ fn most_common_nonzero_tie_is_deterministic() {
 }
 
 #[test]
-fn normalization_outliers_flag_channel_and_rate_mismatches() {
-    let mk = |sr: u32, ch: u32| AudioFileInfoBuilder { sr, ch }.build();
-    let probed = vec![mk(44_100, 2), mk(44_100, 1), mk(22_050, 2), mk(44_100, 2)];
-    assert_eq!(normalization_outliers(&probed, 44_100, 2), vec![1, 2]);
-    assert!(normalization_outliers(&probed[..1], 44_100, 2).is_empty());
-}
+fn stream_target_flags_rate_channel_profile_and_depth_outliers() {
+    let mk = |sr: u32, ch: u32, profile: &str, depth: u32| crate::types::AudioFileInfo {
+        path: String::new(), filename: String::new(), chapter_name: String::new(),
+        codec: "aac".into(), duration: 1.0, sample_rate: sr, channels: ch,
+        bitrate: Some(96_000), aac_profile: Some(profile.to_string()), bit_depth: depth,
+        is_adts: false, title: None, artist: None, album: None, narrator: None,
+        year: None, file_size: 0,
+    };
+    let probed = vec![mk(44_100, 2, "LC", 0), mk(44_100, 1, "LC", 0), mk(22_050, 2, "LC", 0), mk(44_100, 2, "LC", 0)];
+    let t = StreamTarget::majority(&probed);
+    assert_eq!((t.sample_rate, t.channels, t.aac_profile.as_deref()), (44_100, 2, Some("LC")));
+    assert_eq!(t.outliers(&probed), vec![1, 2]);
+    assert!(!t.is_uniform(&probed));
+    assert!(t.is_uniform(&probed[..1]));
 
-struct AudioFileInfoBuilder { sr: u32, ch: u32 }
-impl AudioFileInfoBuilder {
-    fn build(self) -> crate::types::AudioFileInfo {
-        crate::types::AudioFileInfo {
-            path: String::new(), filename: String::new(), chapter_name: String::new(),
-            codec: "aac".into(), duration: 1.0, sample_rate: self.sr, channels: self.ch,
-            bitrate: Some(96_000), title: None, artist: None, album: None, narrator: None,
-            year: None, file_size: 0,
-        }
-    }
+    // An HE-AAC chapter among LC ones must be re-encoded, not stream-copied.
+    let he = vec![mk(44_100, 2, "LC", 0), mk(44_100, 2, "HE-AAC", 0), mk(44_100, 2, "LC", 0)];
+    assert_eq!(StreamTarget::majority(&he).outliers(&he), vec![1]);
+    // An HE-AAC majority cannot be matched by the bundled encoders: re-encode all.
+    let mostly_he = vec![mk(44_100, 2, "HE-AAC", 0), mk(44_100, 2, "HE-AAC", 0), mk(44_100, 2, "LC", 0)];
+    assert_eq!(StreamTarget::majority(&mostly_he).outliers(&mostly_he), vec![0, 1, 2]);
+
+    // 24-bit next to 16-bit ALAC is an outlier; unknown depth (0) is not.
+    let depths = vec![mk(44_100, 2, "LC", 16), mk(44_100, 2, "LC", 24), mk(44_100, 2, "LC", 16), mk(44_100, 2, "LC", 0)];
+    assert_eq!(StreamTarget::majority(&depths).outliers(&depths), vec![1]);
 }
 
 #[test]
@@ -711,13 +719,13 @@ fn transcode_honours_exact_low_sample_rate_and_channels() {
     let items = vec![(0usize, src.to_string_lossy().to_string())];
     let emit = |_: crate::types::Stage, _: f64, _: &str| {};
 
-    let exact = transcode_parallel(&items, tmp.path(), "aac", "128k", Some("2"), Some(22_050), true, &[1.0], &emit, 0.0, 1.0)
+    let exact = transcode_parallel(&items, tmp.path(), "aac", "128k", Some("2"), Some(22_050), true, None, &[1.0], &emit, 0.0, 1.0)
         .expect("transcode failed");
     assert_eq!(stream_params(exact[0].to_str().unwrap()), (22_050, 2));
 
     let floored_dir = tmp.path().join("floored");
     std::fs::create_dir(&floored_dir).unwrap();
-    let floored = transcode_parallel(&items, &floored_dir, "aac", "128k", Some("2"), Some(22_050), false, &[1.0], &emit, 0.0, 1.0)
+    let floored = transcode_parallel(&items, &floored_dir, "aac", "128k", Some("2"), Some(22_050), false, None, &[1.0], &emit, 0.0, 1.0)
         .expect("transcode failed");
     assert_eq!(stream_params(floored[0].to_str().unwrap()), (44_100, 2));
 }
@@ -775,7 +783,7 @@ fn merge_aac_mono_chapter_among_stereo_is_reencoded() {
         paths.push(p.to_string_lossy().to_string());
     }
     let probed = probe_all_files(paths.clone()).unwrap();
-    assert_eq!(normalization_outliers(&probed, 44_100, 2), vec![2]);
+    assert_eq!(StreamTarget::majority(&probed).outliers(&probed), vec![2]);
     let output = run_merge(test_config(&paths, tmp.path(), "mono_outlier"));
     assert_chapters(&output, 4);
     let (secs, errors) = decoded_audio(&output);
@@ -809,4 +817,167 @@ fn filename_rules_cover_windows_reserved_names_and_typed_extensions() {
     assert_eq!(strip_output_extension("book.mp3"), "book");
     assert_eq!(strip_output_extension("book.m4a"), "book.m4a");
     assert_eq!(strip_output_extension("book"), "book");
+}
+
+// ── Regression: raw ADTS, bit depth, chapter offsets, ordering, metadata ──
+
+#[test]
+fn merge_raw_adts_next_to_m4a_keeps_every_chapter() {
+    // Stream-copying ADTS packets next to MP4-wrapped AAC failed inside the
+    // adtstoasc filter; ffmpeg exited 0 with a 10 s file for a 40 s book.
+    let tmp = tempfile::tempdir().unwrap();
+    let a = tmp.path().join("01 intro.aac");
+    let out = std::process::Command::new(FFMPEG_PATH.as_str())
+        .args(["-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-ac", "2", "-ar", "44100", "-c:a", "aac", "-b:a", "96k", "-f", "adts"])
+        .arg(a.to_str().unwrap()).output().unwrap();
+    assert!(out.status.success());
+    let b = tmp.path().join("02 chapter.m4a");
+    gen_sine_ch(&b, 3.0, 44_100, 2);
+    let paths = vec![a.to_string_lossy().to_string(), b.to_string_lossy().to_string()];
+    let probed = probe_all_files(paths.clone()).unwrap();
+    assert!(probed[0].is_adts && !probed[1].is_adts);
+    let output = run_merge(test_config(&paths, tmp.path(), "adts_mix"));
+    assert_chapters(&output, 2);
+    let (secs, errors) = decoded_audio(&output);
+    assert!(errors.is_empty(), "decoder errors:\n{errors}");
+    assert!((secs - 6.0).abs() < 0.3, "decoded {secs}s, expected ~6s");
+}
+
+#[test]
+fn merge_alac_mixed_bit_depths_normalises_to_majority() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    for (i, fmt) in ["s16p", "s32p", "s16p"].iter().enumerate() {
+        let p = tmp.path().join(format!("{:02}.m4a", i + 1));
+        let out = std::process::Command::new(FFMPEG_PATH.as_str())
+            .args(["-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "alac", "-sample_fmt", fmt, "-f", "ipod"])
+            .arg(p.to_str().unwrap()).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        paths.push(p.to_string_lossy().to_string());
+    }
+    let probed = probe_all_files(paths.clone()).unwrap();
+    assert_eq!(probed.iter().map(|p| p.bit_depth).collect::<Vec<_>>(), vec![16, 24, 16]);
+    assert_eq!(StreamTarget::majority(&probed).outliers(&probed), vec![1]);
+    let output = run_merge(test_config(&paths, tmp.path(), "alac_depths"));
+    assert_chapters(&output, 3);
+    let json = probe_output(&output);
+    assert_eq!(json["streams"][0]["codec_name"].as_str(), Some("alac"));
+    assert_eq!(json["streams"][0]["bits_per_raw_sample"].as_str(), Some("16"));
+    let (secs, errors) = decoded_audio(&output);
+    assert!(errors.is_empty(), "decoder errors:\n{errors}");
+    assert!((secs - 6.0).abs() < 0.3, "decoded {secs}s, expected ~6s");
+}
+
+#[test]
+fn chap_byte_offsets_match_ffprobe_packet_positions() {
+    // 10 minutes of CBR MP3: the old whole-millisecond frame clock drifted
+    // 0.47%, i.e. ~2.8 s (100+ frames) by the end of this file.
+    let tmp = tempfile::tempdir().unwrap();
+    let p = tmp.path().join("long.mp3");
+    let out = std::process::Command::new(FFMPEG_PATH.as_str())
+        .args(["-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=600", "-c:a", "libmp3lame", "-b:a", "128k",
+               "-id3v2_version", "3", "-metadata", "title=t"])
+        .arg(p.to_str().unwrap()).output().unwrap();
+    assert!(out.status.success());
+    let data = std::fs::read(&p).unwrap();
+    let starts_ms = [0u64, 300_000, 599_000];
+    let offsets = crate::concat::chapter_byte_offsets_by_time(&data, &starts_ms).unwrap();
+
+    let packets = std::process::Command::new(FFPROBE_PATH.as_str())
+        .args(["-v", "error", "-select_streams", "a:0", "-show_entries", "packet=pos,pts_time", "-of", "csv=p=0"])
+        .arg(p.to_str().unwrap()).output().unwrap();
+    // ffprobe prints packet fields in its own order: pts_time, then pos.
+    let rows: Vec<(f64, u64)> = String::from_utf8_lossy(&packets.stdout).lines().filter_map(|l| {
+        let mut it = l.split(',');
+        Some((it.next()?.trim().parse().ok()?, it.next()?.trim().parse().ok()?))
+    }).collect();
+    assert!(rows.len() > 20_000, "unexpected packet listing: {} rows", rows.len());
+    for (i, start) in starts_ms.iter().enumerate() {
+        let want = rows.iter().find(|(t, _)| (*t * 1000.0).round() as u64 >= *start).map(|(_, pos)| *pos).unwrap();
+        let got = offsets[i] as u64;
+        assert!(got.abs_diff(want) <= 418, "chapter {i}: offset {got} vs ffprobe packet {want}");
+    }
+}
+
+#[test]
+fn natural_order_puts_chapter_2_before_chapter_10() {
+    let mut names = vec!["Chapter 10.mp3", "chapter 1.mp3", "Chapter 2.mp3", "Part 3 - b.mp3", "Part 3 - a.mp3", "10.mp3", "9.mp3"];
+    names.sort_by(|a, b| natural_cmp(a, b));
+    assert_eq!(names, vec!["9.mp3", "10.mp3", "chapter 1.mp3", "Chapter 2.mp3", "Chapter 10.mp3", "Part 3 - a.mp3", "Part 3 - b.mp3"]);
+
+    let tmp = tempfile::tempdir().unwrap();
+    for n in ["Chapter 10.m4a", "Chapter 2.m4a", "Chapter 1.m4a"] {
+        gen_sine(&tmp.path().join(n), 0.5, 44_100, "aac");
+    }
+    let dir = tmp.path().to_string_lossy().to_string();
+    let inside = tmp.path().join("Chapter 2.m4a").to_string_lossy().to_string();
+    let resolved = crate::scan::resolve_audio_paths(vec![dir, inside]);
+    let names: Vec<&str> = resolved.paths.iter().map(|p| Path::new(p).file_name().unwrap().to_str().unwrap()).collect();
+    assert_eq!(names, vec!["Chapter 1.m4a", "Chapter 2.m4a", "Chapter 10.m4a"], "natural order, no duplicate");
+}
+
+#[test]
+fn ffmetadata_special_characters_round_trip() {
+    assert_eq!(escape_ffmetadata("a=b;c#d\\e"), "a\\=b\\;c\\#d\\\\e");
+    assert_eq!(escape_ffmetadata("two\nlines\r\0"), "two\\\nlines");
+
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = make_fixtures(tmp.path(), 1, "aac");
+    let mut config = test_config(&paths, tmp.path(), "meta");
+    config.title = Some("Line one\nLine two".to_string());
+    config.files[0].chapter_name = "Ch #1 = one; two\\three".to_string();
+    let output = run_merge(config);
+    let json = probe_output(&output);
+    assert_eq!(format_tag(&json, "title").as_deref(), Some("Line one\nLine two"));
+    assert_eq!(json["chapters"][0]["tags"]["title"].as_str(), Some("Ch #1 = one; two\\three"));
+}
+
+#[test]
+fn unreadable_cover_is_rejected_before_transcoding() {
+    let tmp = tempfile::tempdir().unwrap();
+    let fake = tmp.path().join("cover.jpg");
+    std::fs::write(&fake, b"not an image").unwrap();
+    assert!(crate::cover::set_custom_cover_art(fake.to_string_lossy().to_string()).is_err());
+    assert!(crate::cover::validate_cover_image(fake.to_str().unwrap()).is_err());
+
+    let paths = make_fixtures(tmp.path(), 1, "aac");
+    let mut config = test_config(&paths, tmp.path(), "badcover");
+    config.cover_art_path = Some(fake.to_string_lossy().to_string());
+    let err = merge_audio_files_core(config, |_, _, _| {}).unwrap_err();
+    assert!(err.contains("Cover image"), "unexpected error: {err}");
+
+    let real = tmp.path().join("Cover.PNG");
+    gen_cover(&real);
+    assert!(crate::cover::validate_cover_image(real.to_str().unwrap()).is_ok());
+    // Case-insensitive folder lookup ("Cover.PNG" next to the chapters).
+    let found = crate::cover::get_cover_art(paths.clone()).expect("folder cover not found");
+    assert!(found.file_path.ends_with("Cover.PNG"), "{}", found.file_path);
+}
+
+#[test]
+fn failed_merge_leaves_nothing_at_the_destination() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out_dir = tmp.path().join("out");
+    std::fs::create_dir(&out_dir).unwrap();
+    let paths = make_fixtures(tmp.path(), 2, "aac");
+    let mut config = test_config(&paths, &out_dir, "partial");
+    config.cover_art_path = Some(tmp.path().join("nope.jpg").to_string_lossy().to_string());
+    std::fs::write(tmp.path().join("nope.jpg"), b"junk").unwrap();
+    assert!(merge_audio_files_core(config, |_, _, _| {}).is_err());
+    let leftovers: Vec<_> = std::fs::read_dir(&out_dir).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert!(leftovers.is_empty(), "destination not clean: {leftovers:?}");
+}
+
+#[test]
+fn debug_builds_use_the_bundled_sidecar() {
+    // Tests and the dev CLI must exercise the ffmpeg that ships. CI fetches
+    // the sidecars before running this, so a PATH fallback here means the
+    // triple-named binary was not found.
+    let expected_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries");
+    if !expected_dir.exists() {
+        eprintln!("skipping: {} missing — run scripts/fetch-binaries.sh", expected_dir.display());
+        return;
+    }
+    assert!(Path::new(FFMPEG_PATH.as_str()).starts_with(&expected_dir), "FFMPEG_PATH = {}", *FFMPEG_PATH);
+    assert!(Path::new(FFPROBE_PATH.as_str()).starts_with(&expected_dir), "FFPROBE_PATH = {}", *FFPROBE_PATH);
 }

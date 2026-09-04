@@ -1,7 +1,7 @@
 use bind_it_lib::merge::merge_audio_files_core;
 use bind_it_lib::probe::probe_all_files;
 use bind_it_lib::types::{FileEntry, MergeConfig, Stage};
-use bind_it_lib::util::clean_chapter_name;
+use bind_it_lib::util::{clean_chapter_name, natural_cmp};
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -123,7 +123,7 @@ fn folder_audio_files(dir: &Path) -> Vec<PathBuf> {
             files.push(path);
         }
     }
-    files.sort();
+    files.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
     files
 }
 

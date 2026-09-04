@@ -120,6 +120,18 @@ pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
         .as_str()
         .and_then(|b| b.parse::<u64>().ok());
 
+    let aac_profile = if codec == "aac" {
+        audio_stream["profile"].as_str().map(|s| s.to_string())
+    } else {
+        None
+    };
+    let bit_depth = audio_stream["bits_per_raw_sample"]
+        .as_str()
+        .and_then(|b| b.parse::<u32>().ok())
+        .or_else(|| audio_stream["bits_per_sample"].as_u64().map(|b| b as u32).filter(|&b| b > 0))
+        .unwrap_or(0);
+    let is_adts = format["format_name"].as_str() == Some("aac");
+
     // ffmpeg/ffprobe normalizes tag case inconsistently across containers and
     // demuxers (MP3 ID3 → lower, MP4 → mixed, etc.). Match case-insensitively
     // by scanning the tags object once instead of guessing common variants.
@@ -153,6 +165,9 @@ pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
         sample_rate,
         channels,
         bitrate,
+        aac_profile,
+        bit_depth,
+        is_adts,
         title: get_tag("title"),
         artist: get_tag("artist"),
         album: get_tag("album"),

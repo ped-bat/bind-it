@@ -31,6 +31,7 @@ pub fn transcode_parallel<F>(
     channels: Option<&str>,
     sample_rate: Option<u32>,
     exact_sample_rate: bool,
+    bit_depth: Option<u32>,
     durations: &[f64],
     emit: &F,
     pct_start: f64,
@@ -130,6 +131,15 @@ where
                 if let Some(ch) = channels {
                     args.push("-ac".to_string());
                     args.push(ch.to_string());
+                }
+
+                // ALAC keeps the source bit depth; when normalising outliers to
+                // sit next to pass-through files the depth must match too.
+                if codec == "alac" {
+                    if let Some(bits) = bit_depth.filter(|&b| b > 0) {
+                        args.push("-sample_fmt".to_string());
+                        args.push(if bits > 16 { "s32p" } else { "s16p" }.to_string());
+                    }
                 }
 
                 args.push("-threads".to_string());

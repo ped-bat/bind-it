@@ -24,6 +24,14 @@ pub fn preflight_check(
     }
 
     let out = Path::new(&output_dir);
+    // A relative folder (or "~") would resolve against the app process's
+    // working directory — somewhere inside the install location.
+    if !out.is_absolute() {
+        errors.push("Output folder must be a full path — use Browse to pick it.".to_string());
+    }
+    if !out.is_absolute() {
+        return PreflightResult { ok: false, warnings, errors };
+    }
     if !out.exists() {
         match fs::create_dir_all(out) {
             Ok(_) => {}

@@ -201,7 +201,10 @@ pub fn clean_chapter_name(filename: &str) -> String {
     if result.is_empty() { name.trim().to_string() } else { result }
 }
 
-fn escape_ffmetadata(value: &str) -> String {
+/// ffmetadata escaping: '=', ';', '#' and '\\' take a backslash, a newline
+/// is a backslash followed by a real newline (not the two characters "\\n",
+/// which ffmpeg reads as a literal "n"), and CR/NUL cannot be represented.
+pub fn escape_ffmetadata(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
         match ch {
@@ -211,12 +214,47 @@ fn escape_ffmetadata(value: &str) -> String {
             }
             '\n' => {
                 escaped.push('\\');
-                escaped.push('n');
+                escaped.push('\n');
             }
+            '\r' | '\0' => {}
             _ => escaped.push(ch),
         }
     }
     escaped
+}
+
+/// Order names the way people number chapters: digit runs compare by value
+/// ("Chapter 2" before "Chapter 10"), letters case-insensitively. Falls back
+/// to plain ordering for otherwise-equal names so the result is stable.
+pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let mut ai = a.chars().peekable();
+    let mut bi = b.chars().peekable();
+    loop {
+        match (ai.peek().copied(), bi.peek().copied()) {
+            (None, None) => return a.cmp(b),
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(ca), Some(cb)) if ca.is_ascii_digit() && cb.is_ascii_digit() => {
+                let na: String = std::iter::from_fn(|| ai.next_if(|c| c.is_ascii_digit())).collect();
+                let nb: String = std::iter::from_fn(|| bi.next_if(|c| c.is_ascii_digit())).collect();
+                let (ta, tb) = (na.trim_start_matches('0'), nb.trim_start_matches('0'));
+                let ord = ta.len().cmp(&tb.len()).then_with(|| ta.cmp(tb));
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(ca), Some(cb)) => {
+                ai.next();
+                bi.next();
+                let la = ca.to_lowercase().next().unwrap_or(ca);
+                let lb = cb.to_lowercase().next().unwrap_or(cb);
+                if la != lb {
+                    return la.cmp(&lb);
+                }
+            }
+        }
+    }
 }
 
 pub fn generate_ffmetadata(files: &[FileEntry], durations: &[f64], metadata: &MergeConfig) -> String {

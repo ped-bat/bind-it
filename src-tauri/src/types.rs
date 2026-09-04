@@ -10,6 +10,17 @@ pub struct AudioFileInfo {
     pub sample_rate: u32,
     pub channels: u32,
     pub bitrate: Option<u64>,
+    /// ffprobe's stream profile for AAC ("LC", "HE-AAC", "HE-AACv2"). HE-AAC
+    /// cannot be stream-copied next to LC: SBR doubles the output rate.
+    #[serde(default)]
+    pub aac_profile: Option<String>,
+    /// bits_per_raw_sample where the codec has one (ALAC/FLAC/PCM), else 0.
+    #[serde(default)]
+    pub bit_depth: u32,
+    /// Raw ADTS .aac rather than MP4-wrapped: cannot be concat-copied with
+    /// .m4a/.m4b and its ffprobe duration is only an estimate.
+    #[serde(default)]
+    pub is_adts: bool,
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,

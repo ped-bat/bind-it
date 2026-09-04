@@ -6,9 +6,6 @@ import '@fontsource/inter/latin-700.css';
 import '@fontsource/instrument-serif/latin-400.css';
 import '@fontsource/instrument-serif/latin-400-italic.css';
 
-import lottie from 'lottie-web';
-import animationData from './animations/intro.json';
-
 // Always open at the top. Left on 'auto', the browser restores the previous
 // offset on reload, and any late layout shift (a webfont swapping in, an
 // image settling) makes scroll anchoring nudge that saved position - which
@@ -19,10 +16,8 @@ const SPRITE = 'icons/sprite.svg';
 
 /* How long the hero logo holds on its first frame before playing. */
 const HERO_LOGO_DELAY_MS = 250;
-const ANIM_CLASSES = ['animate__animated', 'animate__fadeInUp'];
-
 function reveal(el) {
-  el.classList.add(...ANIM_CLASSES);
+  el.classList.add('is-revealed');
 }
 
 /* ── Reveal: hero elements on load ───────────────────────────── */
@@ -74,7 +69,7 @@ function detectOS() {
   return null;
 }
 
-const os = detectOS();
+const os = detectOS() || 'macos';
 const primary = document.getElementById('primary-download');
 const primaryLabel = document.getElementById('primary-download-label');
 const primaryIcon = document.getElementById('primary-download-icon');
@@ -88,7 +83,6 @@ if (os && primary && primaryLabel && primaryIcon) {
   if (use) use.setAttribute('href', `${SPRITE}#${cfg.icon}`);
 
   if (altWrap) {
-    altWrap.setAttribute('data-detected', os);
     const detectedPill = altWrap.querySelector(`a[data-os="${os}"]`);
     if (detectedPill) {
       detectedPill.hidden = true;
@@ -104,7 +98,10 @@ if (os && primary && primaryLabel && primaryIcon) {
   }
 }
 
-/* ── Hero logo: Lottie intro, tinted to --accent ─────────────── */
+/* ── Hero logo: Lottie intro, tinted to --accent ───────────────
+   Loaded on demand, and from the SVG-only "light" build: the full player
+   is ~340 KB and most of it is the canvas/HTML renderers we never use.
+   The static logomark in the markup stands in until it arrives.        */
 function parseCssColor(css) {
   const s = (css || '').trim();
   if (s.charAt(0) === '#') {
@@ -153,9 +150,14 @@ function tintLottie(data, rgb) {
   return data;
 }
 
-function playHeroLogo() {
+async function playHeroLogo() {
   const container = document.getElementById('hero-logo');
   if (!container) return;
+
+  const [{ default: lottie }, { default: animationData }] = await Promise.all([
+    import('lottie-web/build/player/lottie_light'),
+    import('./animations/intro.json'),
+  ]);
 
   const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent');
   const rgb = parseCssColor(accent) || [0.831, 0.537, 0.227];

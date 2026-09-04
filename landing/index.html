@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bind it - Merge audio files into a single file</title>
-  <meta name="description" content="Native desktop app that merges MP3, M4A, M4B, AAC, WAV, FLAC and WMA into a single file, with chapters, cover art and metadata baked in. Lossless, offline and open source.">
+  <meta name="description" content="Native desktop app that merges MP3, M4A, M4B, AAC, WAV, FLAC and WMA into one file with chapters and cover art. Lossless, offline and open source.">
   <meta name="theme-color" content="#FAFAF8" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
 
@@ -15,6 +15,8 @@
   <meta property="og:title" content="Bind it - Merge audio files into a single file">
   <meta property="og:description" content="Merge without re-encoding for no audio quality loss, or compress for smaller files. Chapters and covers baked in. Native, offline and open source.">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bind it">
+  <meta property="og:locale" content="en_GB">
   <meta property="og:url" content="https://bindit.app/">
   <meta property="og:image" content="https://bindit.app/og.png">
   <meta property="og:image:width" content="1200">
@@ -53,6 +55,44 @@
     });
   </script>
 
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "Bind it",
+        "url": "https://bindit.app/",
+        "image": "https://bindit.app/og.png",
+        "description": "Native desktop app that merges MP3, M4A, M4B, AAC, WAV, FLAC and WMA into one file with chapters and cover art. Lossless, offline and open source.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "macOS, Windows, Linux",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://github.com/ped-bat/bind-it/blob/main/LICENSE",
+        "downloadUrl": "https://github.com/ped-bat/bind-it/releases/latest",
+        "author": { "@type": "Person", "name": "Pedro" }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          { "@type": "Question", "name": "Which file formats does Bind it accept?",
+            "acceptedAnswer": { "@type": "Answer", "text": "MP3, M4A, M4B, AAC, WAV, FLAC and WMA. The output is a single M4B with chapter markers, cover art and metadata - or an MP3 if every input is MP3 and you keep the original codec." } },
+          { "@type": "Question", "name": "Does Bind it work offline?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Everything runs locally. No account, no uploads, no network calls during binding." } },
+          { "@type": "Question", "name": "Are Intel Macs supported?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The macOS build is universal - Apple Silicon and Intel are both covered." } },
+          { "@type": "Question", "name": "Does it handle DRM-protected audio files?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Audible .aax and iTunes .m4p files are not accepted file types, and anything still encrypted cannot be decoded. Bind it works on unprotected files you already own - it does not remove protection." } },
+          { "@type": "Question", "name": "How are chapters detected?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Chapter titles come from filenames by default. You can edit names, order and durations in the review step before binding." } },
+          { "@type": "Question", "name": "Where does the output file go?",
+            "acceptedAnswer": { "@type": "Answer", "text": "You pick the destination when you bind. Bind it never touches the source files." } }
+        ]
+      }
+    ]
+  }
+  </script>
+
   <script type="module" src="/main.js"></script>
 </head>
 <body>
@@ -76,12 +116,12 @@
       </p>
 
       <div class="download reveal-load" data-reveal-delay="200">
-        <a href="#download" class="btn btn-primary" id="primary-download" data-os="macos" aria-label="Download Bind it">
+        <a href="#download" class="btn btn-primary" id="primary-download" data-os="macos">
           <svg class="icon-brand" id="primary-download-icon" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
           <span id="primary-download-label">Download for macOS</span>
         </a>
 
-        <div class="download-alt" id="download-alt" aria-label="Other platforms">
+        <div class="download-alt" id="download-alt" role="group" aria-label="Other platforms">
           <span class="alt-label">Also for</span>
           <a href="#download" data-os="macos">
             <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
@@ -102,9 +142,12 @@
       </div>
 
       <figure class="hero-shot">
-        <img class="reveal-load" data-reveal-delay="250" src="app-screenshot.png"
-             alt="Bind it with an audiobook loaded: seven chapters listed with their durations and file sizes, and the cover art below."
-             loading="lazy" width="1624" height="1210">
+        <picture>
+          <source srcset="app-screenshot.webp" type="image/webp">
+          <img class="reveal-load" data-reveal-delay="250" src="app-screenshot.png"
+               alt="Bind it with an audiobook loaded: seven chapters listed with their durations and file sizes, and the cover art below."
+               loading="lazy" width="1624" height="1210">
+        </picture>
       </figure>
     </section>
 
@@ -205,38 +248,38 @@
       </header>
 
       <div class="dl-block">
-      <ul class="grid grid-download">
-        <li>
-          <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-macOS.dmg" rel="noopener" download>
-            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
-            <span>
-              <span class="card-title">macOS</span>
-              <span class="card-sub">Universal · .dmg</span>
-            </span>
-          </a>
-        </li>
-        <li>
-          <a class="card card-link reveal" data-os="windows" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Windows.msi" rel="noopener" download>
-            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
-            <span>
-              <span class="card-title">Windows</span>
-              <span class="card-sub">x64 · .msi</span>
-            </span>
-          </a>
-        </li>
-        <li>
-          <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Linux.AppImage" rel="noopener" download>
-            <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
-            <span>
-              <span class="card-title">Linux</span>
-              <span class="card-sub">x86_64 · AppImage</span>
-            </span>
-          </a>
-        </li>
-      </ul>
-      <p class="download-note" role="status">
-        Windows may show a SmartScreen warning on first install - click <strong>More info</strong> → <strong>Run anyway</strong>.
-      </p>
+        <ul class="grid grid-download">
+          <li>
+            <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-macOS.dmg" rel="noopener">
+              <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-apple"/></svg>
+              <span>
+                <span class="card-title">macOS</span>
+                <span class="card-sub">Universal · .dmg</span>
+              </span>
+            </a>
+          </li>
+          <li>
+            <a class="card card-link reveal" data-os="windows" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Windows.msi" rel="noopener">
+              <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-windows"/></svg>
+              <span>
+                <span class="card-title">Windows</span>
+                <span class="card-sub">x64 · .msi</span>
+              </span>
+            </a>
+          </li>
+          <li>
+            <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Linux.AppImage" rel="noopener">
+              <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
+              <span>
+                <span class="card-title">Linux</span>
+                <span class="card-sub">x86_64 · AppImage</span>
+              </span>
+            </a>
+          </li>
+        </ul>
+        <p class="download-note">
+          Windows may show a SmartScreen warning on first install - click <strong>More info</strong> → <strong>Run anyway</strong>.
+        </p>
       </div>
     </section>
 
@@ -266,12 +309,12 @@
   <!-- Footer -->
   <footer>
     <div class="footer-inner">
-    <nav class="footer-links" aria-label="Footer">
-      <a href="https://github.com/ped-bat/bind-it" rel="noopener">GitHub</a>
-      <a href="https://github.com/ped-bat/bind-it/blob/main/LICENSE" rel="noopener">MIT License</a>
-      <a href="mailto:hello@bindit.app">Contact</a>
-    </nav>
-    <p>© <span id="year">2026</span> Bind it · Created by Pedro</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://github.com/ped-bat/bind-it" rel="noopener">GitHub</a>
+        <a href="https://github.com/ped-bat/bind-it/blob/main/LICENSE" rel="noopener">MIT License</a>
+        <a href="mailto:hello@bindit.app">Contact</a>
+      </nav>
+      <p>© <span id="year">2026</span> Bind it · Created by Pedro</p>
     </div>
   </footer>
 

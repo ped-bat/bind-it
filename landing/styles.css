@@ -4,7 +4,7 @@
    2. Base / reset
    3. Utilities (skip-link, reveal, icons)
    4. Components (btn, card)
-   5. Section scaffolding (section, head, eyebrow, title, lede)
+   5. Section scaffolding (section, head, title, lede)
    6. Hero
    7. Features grid
    8. How it works
@@ -17,11 +17,8 @@
 /* ── 1. Tokens ─────────────────────────────────────────────────── */
 :root {
   --bg: #FAFAF8;
-  --bg-elev: #FFFFFF;
-  --surface: #F2F0EC;
   --alt-veil: rgba(0, 0, 0, 0.035);
   --veil-strong: rgba(0, 0, 0, 0.06);
-  --surface-hover: #EAE7E1;
   --border: #E2DFD9;
   --text: #1A1918;
   --text-muted: #5F5A54;
@@ -52,7 +49,6 @@
   --type-lede: clamp(16px, 2vw, 19px);
 
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --animate-duration: 700ms;
 
   /* Every reveal travels the same distance, over the same time. */
   --reveal-shift: 40px;
@@ -62,11 +58,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #131211;
-    --bg-elev: #1A1918;
-    --surface: #1E1D1B;
     --alt-veil: rgba(255, 255, 255, 0.04);
     --veil-strong: rgba(255, 255, 255, 0.07);
-    --surface-hover: #292724;
     --border: #322F2B;
     --text: #F4F2EF;
     --text-muted: #C2BCB3;
@@ -148,24 +141,19 @@ summary  { cursor: pointer; }
 }
 .skip-link:focus-visible { top: 12px; }
 
-/* Reveal: elements start hidden, JS adds animate__ classes to fade them in.
-   The shift is a fixed distance, not a percentage — a percentage is relative
-   to each element's own height, so a tall card travelled ten times further
-   than a heading. */
+/* Reveal: elements start hidden and main.js adds .is-revealed to fade them
+   in. The shift is a fixed distance, not a percentage — a percentage is
+   relative to each element's own height, so a tall card would travel ten
+   times further than a heading. */
 .reveal, .reveal-load { opacity: 0; }
-.animate__animated {
-  animation-duration: var(--reveal-duration);
-  animation-timing-function: var(--ease-out);
-  animation-fill-mode: both;
-}
-.animate__fadeInUp { animation-name: fadeInUp; }
-@keyframes fadeInUp {
+.is-revealed { animation: rise var(--reveal-duration) var(--ease-out) both; }
+@keyframes rise {
   from { opacity: 0; transform: translate3d(0, var(--reveal-shift), 0); }
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .reveal, .reveal-load { opacity: 1 !important; }
-  .animate__animated { animation: none !important; }
+  .is-revealed { animation: none !important; }
 }
 
 /* Icons — filled (brand) vs stroked (UI). */
@@ -204,7 +192,6 @@ summary  { cursor: pointer; }
 }
 .btn-primary:hover { box-shadow: var(--shadow-accent); }
 
-
 .card {
   background: var(--alt-veil);
   border: 1px solid var(--border);
@@ -217,12 +204,11 @@ summary  { cursor: pointer; }
   align-items: center;
   gap: 16px;
   color: var(--text);
-  background: var(--alt-veil);
   padding: 20px 22px;
+  /* Only the platform cards respond to hover; the feature cards share .card
+     and stay flat, so the accent border lives here rather than on .card. */
+  transition: border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
 }
-/* The platform cards keep their hover; only the feature cards lost theirs.
-   They share .card, so the accent border has to live here. */
-.card-link { transition: border-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out); }
 .card-link:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
 .card-link svg { width: 28px; height: 28px; flex-shrink: 0; }
 .card-title { display: block; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
@@ -274,7 +260,6 @@ section > * {
 }
 .hero > * { position: relative; z-index: 1; }
 
-
 .hero-logo {
   /* Lottie canvas (1640×960) is wider than the static logomark (1172×858);
      scale the container so the inner logo renders at the visual size. */
@@ -305,11 +290,9 @@ section > * {
 .hero-lede span   { display: block; }
 .hero-lede strong { color: var(--text); font-weight: 600; }
 
-/* The shot is the whole app window, so it is shown complete rather than
-   cropped. The radius sits on the image itself, so it rounds the window's
-   own edges instead of slicing across them. */
+/* The shot is cropped flush to the app's chapter panel and rendered at 2x;
+   812px shows it at 1:1, so its text matches the app's own size. */
 .hero-shot {
-  /* 812px shows the shot at 1:1, so its text matches the app's own size. */
   margin: clamp(48px, 8vh, 72px) auto 0;
   max-width: 812px;
 }
@@ -356,12 +339,6 @@ section > * {
 .download-alt a svg     { width: 14px; height: 14px; }
 .alt-sep          { color: var(--text-faint); }
 .alt-sep[hidden]  { display: none; }
-.download-meta {
-  font-size: 13px;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-}
 
 /* ── 7. Features grid ──────────────────────────────────────────── */
 .grid {
@@ -554,21 +531,28 @@ section > * {
   color: var(--text-muted);
 
   opacity: 0;
+  /* visibility flips after the fade-out so the note is not merely invisible
+     but also out of the accessibility tree while hidden. */
+  visibility: hidden;
   pointer-events: none;
   transform: translate(-50%, -6px);
   transition:
     opacity 220ms var(--ease-out),
-    transform 380ms cubic-bezier(0.34, 1.4, 0.5, 1);
+    transform 380ms cubic-bezier(0.34, 1.4, 0.5, 1),
+    visibility 0s linear 220ms;
 }
 
 .dl-block:has(.card-link[data-os="windows"]:hover) .download-note,
 .dl-block:has(.card-link[data-os="windows"]:focus-visible) .download-note {
   opacity: 1;
+  visibility: visible;
   transform: translate(-50%, 0);
+  transition:
+    opacity 220ms var(--ease-out),
+    transform 380ms cubic-bezier(0.34, 1.4, 0.5, 1),
+    visibility 0s;
 }
 .download-note strong { color: var(--text); font-weight: 500; }
-.download-note a { color: var(--text); border-bottom: 1px solid var(--border); }
-.download-note a:hover { border-bottom-color: var(--accent); }
 
 /* ── 11. Support + feedback strip ─────────────────────────────── */
 .strip-section { border-top: 1px solid var(--border); }

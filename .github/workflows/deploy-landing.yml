@@ -28,12 +28,12 @@ jobs:
       - run: npm run build
 
       - name: Sync files over FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ vars.FTP_SERVER }}
           username: ${{ vars.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ vars.PORT }}
+          port: ${{ vars.FTP_PORT }}
           protocol: ftps
           local-dir: ./landing/dist/
           server-dir: ${{ vars.WEBSITE_URL }}${{ vars.FTP_REMOTE_DIR }}

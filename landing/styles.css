@@ -610,6 +610,7 @@ section > * {
   color: var(--text-muted);
 }
 .strip-note span { display: block; }
+.strip-note strong { font-weight: 600; color: var(--text); }
 
 .strip-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 

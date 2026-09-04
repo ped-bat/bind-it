@@ -36,8 +36,9 @@ In all three paths, chapter metadata and cover art are written into the output f
 
 ## System Requirements
 
-- **macOS** 11+ (Apple Silicon or Intel), **Windows** 10/11 (x86_64), or
-  **Linux** x86_64 (AppImage)
+- **macOS** 12+ on Apple Silicon, 11+ on Intel; **Windows** 10/11 (x86_64); or
+  **Linux** x86_64 (AppImage) with glibc 2.35 or newer — Ubuntu 22.04+,
+  Debian 12+, Fedora 36+, Linux Mint 21+
 - Nothing else — `ffmpeg` and `ffprobe` ship inside the app
 
 ## Development

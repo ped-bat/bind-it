@@ -4,19 +4,26 @@ const MP3_CHOICE_KEY = "bindit:mp3FormatChoice";
 
 export const FORBIDDEN_FILENAME_CHARS = /[/\\:*?"<>|]/g;
 
+// CON, PRN, AUX, NUL, COM1-9, LPT1-9 — with or without an extension, any case.
+const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\.|$)/i;
+
 /**
  * Strip characters no OS accepts in file names, plus leading/trailing
- * whitespace and trailing dots (both illegal on Windows). Matches the
- * backend's validate_filename rules so a sanitized name always passes.
+ * whitespace and trailing dots (both illegal on Windows), and rename the
+ * device names Windows refuses to create. Matches the backend's
+ * validate_filename rules so a sanitized name always passes.
  * @param {string} name
  */
 export function sanitizeFilename(name) {
-  return name
+  const cleaned = name
     .replace(FORBIDDEN_FILENAME_CHARS, "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1f]/g, "")
     .trim()
     .replace(/[.\s]+$/, "");
+  return WINDOWS_RESERVED_STEM.test(cleaned)
+    ? cleaned.replace(/^[^.]+/, (stem) => `${stem}_`)
+    : cleaned;
 }
 
 /** @typedef {"mp3" | "mp3-m4b" | "reencode"} Mp3FormatChoice */
@@ -116,7 +123,7 @@ class SettingsStore {
   setFilenameFrom(folderName, file) {
     if (this.outputFilename && this.outputFilename !== "audio") return;
     const name = folderName || file?.album || file?.title || "audio";
-    this.outputFilename = name.replace(FORBIDDEN_FILENAME_CHARS, "");
+    this.outputFilename = sanitizeFilename(name) || "audio";
   }
 
   persistQuality() {

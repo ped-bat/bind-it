@@ -10,7 +10,7 @@ use crate::transcode::{clamp_aac_bitrate, transcode_parallel};
 use crate::plan::get_merge_plan;
 use crate::probe::probe_all_files;
 use crate::types::{FileEntry, FilePlanInfo, MergeConfig};
-use crate::util::clean_chapter_name;
+use crate::util::{clean_chapter_name, is_windows_reserved_name, strip_output_extension, validate_filename};
 use std::path::Path;
 
 /// Generate a sine-wave audio file in `codec` format at `path`.
@@ -793,4 +793,20 @@ fn concat_with_unreadable_entry_is_an_error() {
     ];
     let result = concat_aac_files(&files, tmp.path());
     assert!(result.is_err(), "concat demuxer failure was swallowed (exit 0, truncated output)");
+}
+
+#[test]
+fn filename_rules_cover_windows_reserved_names_and_typed_extensions() {
+    for bad in ["CON", "con", "Nul.m4b", "COM1", "lpt9.mp3", "aux.tar.gz", "PRN "] {
+        assert!(is_windows_reserved_name(bad), "{bad} should be reserved");
+        assert!(validate_filename(bad.trim_end()).is_err(), "{bad} should be rejected");
+    }
+    for ok in ["CONsole", "COM0", "COM10", "LPT", "nullable", "My Book"] {
+        assert!(!is_windows_reserved_name(ok), "{ok} should be allowed");
+        assert!(validate_filename(ok).is_ok(), "{ok} should pass");
+    }
+    assert_eq!(strip_output_extension("book.M4B"), "book");
+    assert_eq!(strip_output_extension("book.mp3"), "book");
+    assert_eq!(strip_output_extension("book.m4a"), "book.m4a");
+    assert_eq!(strip_output_extension("book"), "book");
 }

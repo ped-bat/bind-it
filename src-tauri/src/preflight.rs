@@ -61,6 +61,9 @@ pub fn preflight_check(
     }
 
     if let Some(ref name) = output_filename {
+        // Same normalisation as unique_output_path, or "book.m4b" would be
+        // checked as "book.m4b.m4b" and never warn.
+        let name = crate::util::strip_output_extension(name);
         let ext = output_extension.as_deref().unwrap_or("m4b");
         let candidate = Path::new(&output_dir).join(format!("{}.{}", name, ext));
         if candidate.exists() {

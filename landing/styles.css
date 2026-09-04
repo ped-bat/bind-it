@@ -385,7 +385,9 @@ section > * {
   display: block;
   font-family: var(--font-display);
   font-size: 44px;
-  font-weight: 700;
+  /* Instrument Serif ships a single weight (400). Asking for 700 made the
+     browser synthesise a bold by smearing the outline. */
+  font-weight: 400;
   line-height: 1;
   color: var(--accent);
   margin-bottom: 12px;

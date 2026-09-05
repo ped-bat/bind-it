@@ -2,7 +2,7 @@ import { appStore } from "./app.svelte.js";
 import { fileStore } from "./files.svelte.js";
 import { metadataStore } from "./metadata.svelte.js";
 import { settingsStore } from "./settings.svelte.js";
-import { sanitizeFilename } from "./settings.svelte.js";
+import { normalizeOutputDir, sanitizeFilename } from "./settings.svelte.js";
 import { preflightCheck, mergeAudioFiles, cancelMerge, revealInFolder } from "$lib/services/tauri.js";
 import { outputExtension, outputContainerLabel, outputCodecLabel } from "$lib/services/output.js";
 
@@ -73,6 +73,11 @@ class ConversionStore {
   /** @type {{ fileCount: number, totalDuration: number } | null} */
   #startStats = null;
 
+  // A second Bind while preflight is still awaiting must not start a second
+  // merge (the backend would refuse it and the error would bounce the user
+  // back to Setup while the real merge runs on, its completion dropped).
+  #starting = false;
+
   // Merge events can arrive after a cancel or after the user is back on the
   // setup screen (e.g. a drop error kicked them there). Only a conversion
   // that is actually on screen may react to them.
@@ -134,13 +139,23 @@ class ConversionStore {
   }
 
   async start() {
+    if (this.#starting) return;
+    this.#starting = true;
+    try {
+      await this.#start();
+    } finally {
+      this.#starting = false;
+    }
+  }
+
+  async #start() {
     if (fileStore.count < 1) return;
     if (fileStore.probing) {
       appStore.error = "Still reading files — wait for probing to finish, then try again.";
       return;
     }
 
-    const folder = settingsStore.outputDir.trim();
+    const folder = normalizeOutputDir(settingsStore.outputDir);
     const filename = sanitizeFilename(settingsStore.outputFilename);
     const missing = [];
     if (!folder) missing.push("output folder");
@@ -217,8 +232,13 @@ class ConversionStore {
   }
 
   async revealOutput() {
-    if (this.outputPath) {
-      try { await revealInFolder(this.outputPath); } catch { /* ignore */ }
+    if (!this.outputPath) return;
+    try {
+      await revealInFolder(this.outputPath);
+    } catch {
+      // Linux sessions without a FileManager1 D-Bus provider (or a portal)
+      // land here; the button must not just do nothing.
+      appStore.warning = `Couldn't open the folder from here. Your file is at: ${this.outputPath}`;
     }
   }
 

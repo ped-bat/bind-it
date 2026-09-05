@@ -93,7 +93,9 @@
     const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent");
     const rgb = parseCssColor(accent) ?? [0.831, 0.537, 0.227];
     const src = which === "intro" ? introData : pulseData;
-    const data = tintLottie(structuredClone(src), rgb);
+    // Plain JSON, so a JSON round-trip clones it — structuredClone is
+    // missing from WebKit before Safari 15.4 (macOS 11 without updates).
+    const data = tintLottie(JSON.parse(JSON.stringify(src)), rgb);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     anim?.destroy();

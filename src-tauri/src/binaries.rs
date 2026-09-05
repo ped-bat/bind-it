@@ -297,7 +297,7 @@ pub fn check_ffmpeg() -> Result<String, String> {
     let output = ffprobe()
         .arg("-version")
         .output()
-        .map_err(|e| format!("ffprobe not found: {}", e))?;
+        .map_err(|e| format!("{} ({})", ffmpeg_install_hint(), e))?;
 
     let version = String::from_utf8_lossy(&output.stdout);
     let first_line = version.lines().next().unwrap_or("unknown");

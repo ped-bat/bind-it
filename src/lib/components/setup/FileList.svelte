@@ -49,6 +49,11 @@
   /** @param {KeyboardEvent} e */
   function handleFileListKeydown(e) {
     if (fileStore.count === 0) return;
+    const target = /** @type {HTMLElement} */ (e.target);
+    // Cmd/Ctrl+Backspace is the app-wide "clear session" shortcut (handled
+    // on window, with a confirm): it must not also delete the focused row.
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const onRow = target.classList.contains("file-item");
     if (e.key === "ArrowDown") {
       e.preventDefault();
       focusedFileIndex = Math.min(focusedFileIndex + 1, fileStore.count - 1);
@@ -58,12 +63,21 @@
       focusedFileIndex = Math.max(focusedFileIndex - 1, 0);
       focusEl(`.file-item[data-index="${focusedFileIndex}"]`);
     } else if (e.key === "Enter" && focusedFileIndex >= 0) {
+      // Only when the row itself is focused — Enter on the row's × button
+      // must activate that button.
+      if (!onRow) return;
       e.preventDefault();
       focusEl(`.file-item[data-index="${focusedFileIndex}"] .chapter-name`);
     } else if ((e.key === "Delete" || e.key === "Backspace") && focusedFileIndex >= 0) {
-      if (/** @type {HTMLElement} */ (e.target).tagName === "INPUT") return;
+      if (target.tagName === "INPUT" || target.tagName === "BUTTON") return;
       e.preventDefault();
-      const idx = focusedFileIndex;
+      // Take the index from the row under the event, not the last row that
+      // received focus (focus does not bubble, so a focused child left
+      // focusedFileIndex stale).
+      const row = target.closest(".file-item");
+      const idx = row instanceof HTMLElement && row.dataset.index !== undefined
+        ? Number(row.dataset.index)
+        : focusedFileIndex;
       fileStore.remove(idx);
       appStore.announce(`Removed chapter ${idx + 1}`);
       focusedFileIndex = fileStore.count === 0 ? -1 : Math.min(idx, fileStore.count - 1);
@@ -100,7 +114,7 @@
         data-index={i}
         aria-label="Chapter {i + 1}: {file.chapter_name}"
         onpointerdown={(e) => dragStart(i, e)}
-        onfocus={() => focusedFileIndex = i}
+        onfocusin={() => focusedFileIndex = i}
         animate:springFlip
         in:fade={{ duration: 150 }}
         out:fade={{ duration: 100 }}

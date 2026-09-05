@@ -76,19 +76,18 @@
   })));
 
   // The mode toggle is disabled while forced, so any non-lossless value we
-  // overwrite here is the user's real preference — remember it and restore
-  // it when the file set leaves the MP3 bitstream-copy path.
-  /** @type {"lossless" | "compress" | null} */
-  let modeBeforeForce = null;
+  // overwrite here is the user's real preference — remember it (in the
+  // store, which outlives this component) and restore it when the file set
+  // leaves the MP3 bitstream-copy path.
   $effect(() => {
     if (isMp3CopyPath) {
       if (settingsStore.qualityMode !== "lossless") {
-        modeBeforeForce = settingsStore.qualityMode;
+        settingsStore.qualityModeBeforeForce = settingsStore.qualityMode;
         settingsStore.qualityMode = "lossless";
       }
-    } else if (modeBeforeForce !== null) {
-      settingsStore.qualityMode = modeBeforeForce;
-      modeBeforeForce = null;
+    } else if (settingsStore.qualityModeBeforeForce !== null) {
+      settingsStore.qualityMode = settingsStore.qualityModeBeforeForce;
+      settingsStore.qualityModeBeforeForce = null;
     }
   });
 

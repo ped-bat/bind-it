@@ -16,6 +16,9 @@
 
 set -euo pipefail
 
+# FFmpeg release branch for the BtbN (Linux/Windows) sidecars.
+BTBN_BRANCH="${BTBN_BRANCH:-8.1}"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT/src-tauri/binaries"
 TMP_DIR="$(mktemp -d)"
@@ -127,17 +130,20 @@ fetch_for_triple() {
       fetch_osxexperts "$triple" ;;
     x86_64-apple-darwin)
       fetch_evermeet "$triple" ;;
+    # BtbN's "master-latest" archives are git-master nightlies: every release
+    # would ship whatever FFmpeg HEAD built that day. The "n<ver>-latest"
+    # archives track a release branch (patch releases only).
     x86_64-unknown-linux-gnu)
       fetch_btbn "$triple" \
-        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz" \
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${BTBN_BRANCH}-latest-linux64-gpl-${BTBN_BRANCH}.tar.xz" \
         "ffmpeg-linux64.tar.xz" ;;
     aarch64-unknown-linux-gnu)
       fetch_btbn "$triple" \
-        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz" \
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${BTBN_BRANCH}-latest-linuxarm64-gpl-${BTBN_BRANCH}.tar.xz" \
         "ffmpeg-linuxarm64.tar.xz" ;;
     x86_64-pc-windows-msvc)
       fetch_btbn "$triple" \
-        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" \
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${BTBN_BRANCH}-latest-win64-gpl-${BTBN_BRANCH}.zip" \
         "ffmpeg-win64.zip" ;;
     *)
       echo "Unsupported triple: $triple" >&2

@@ -27,6 +27,7 @@
 	},
 	"bundle": {
 		"active": true,
+		"category": "Music",
 		"targets": ["app", "dmg", "msi", "nsis", "appimage"],
 		"externalBin": [
 			"binaries/ffmpeg",

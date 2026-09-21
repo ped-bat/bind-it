@@ -22,10 +22,13 @@ corresponding sources:
 
 | Platform | Build provider |
 | --- | --- |
-| macOS (Apple Silicon) | <https://www.osxexperts.net> |
-| macOS (Intel) | <https://evermeet.cx/ffmpeg/> |
-| Windows x86_64 | <https://github.com/BtbN/FFmpeg-Builds> (`ffmpeg-master-latest-win64-gpl`) |
-| Linux x86_64 | <https://github.com/BtbN/FFmpeg-Builds> (`ffmpeg-master-latest-linux64-gpl`) |
+| macOS (Apple Silicon) | <https://www.osxexperts.net> (`ffmpeg71arm.zip`, FFmpeg 7.1) |
+| macOS (Intel) | <https://evermeet.cx/ffmpeg/> (`ffmpeg-8.1.zip`, FFmpeg 8.1) |
+| Windows x86_64 | <https://github.com/BtbN/FFmpeg-Builds> (`ffmpeg-n8.1-latest-win64-gpl-8.1`) |
+| Linux x86_64 | <https://github.com/BtbN/FFmpeg-Builds> (`ffmpeg-n8.1-latest-linux64-gpl-8.1`) |
+
+Run `ffmpeg -version` from the app's own copy (next to the app executable)
+to see the exact build string of an installed copy.
 
 In accordance with the GPL, we will provide the complete corresponding
 source code of the bundled FFmpeg binaries on request — the links above

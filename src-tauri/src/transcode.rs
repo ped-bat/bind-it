@@ -91,11 +91,18 @@ where
                     _ => 2,
                 };
 
-                let encode_bitrate = if is_aac {
-                    clamp_aac_bitrate(bitrate, effective_sr.unwrap_or(44_100), effective_ch)
-                } else {
-                    bitrate.to_string()
-                };
+                // aac_at's real bitrate ceiling is an undocumented table (44.1 kHz
+                // mono takes 256k but not 320k; 22.05 kHz mono takes 64k but not
+                // 66k). Ask for what the user chose; if the encoder produces
+                // nothing, fall back to the conservative clamp — never silently
+                // cap a bitrate the encoder would have accepted.
+                let clamped_bitrate = clamp_aac_bitrate(bitrate, effective_sr.unwrap_or(44_100), effective_ch);
+                let mut attempts: Vec<String> = vec![bitrate.to_string()];
+                if is_aac && clamped_bitrate != bitrate {
+                    attempts.push(clamped_bitrate);
+                }
+                let mut last_err = String::new();
+                for encode_bitrate in attempts {
 
                 let mut args = vec![
                     "-y".to_string(),
@@ -106,7 +113,7 @@ where
 
                 if is_aac {
                     args.push("-b:a".to_string());
-                    args.push(encode_bitrate);
+                    args.push(encode_bitrate.clone());
                     match codec {
                         "aac_at" => {
                             // Constrained VBR — bitrate-targeted but varies per frame.
@@ -151,7 +158,7 @@ where
                     args.push(sr.to_string());
                 }
 
-                args.push(temp_str);
+                args.push(temp_str.clone());
 
                 let mut child = ffmpeg()
                     .args(&args)
@@ -229,12 +236,19 @@ where
                 if let Some(t) = stdout_thread { let _ = t.join(); }
                 if let Some(t) = stderr_thread { let _ = t.join(); }
 
-                if !status.success() {
-                    let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
-                    return Err(format!(
-                        "Transcode failed for {}: {}",
-                        path, stderr
-                    ));
+                let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
+                let produced = std::fs::metadata(&temp_out).map(|m| m.len() > 0).unwrap_or(false);
+                if status.success() && produced {
+                    last_err.clear();
+                    break;
+                }
+                last_err = format!("Transcode failed for {}: {}", path, stderr);
+                if !status.success() && !stderr.contains("received no packets") {
+                    break;
+                }
+                } // attempts
+                if !last_err.is_empty() {
+                    return Err(last_err);
                 }
 
                 let new_completed_dur = {

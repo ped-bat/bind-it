@@ -92,7 +92,16 @@ fn scan_dir_inner(dir: &Path, exts: &[&str], result: &mut Vec<String>, visited: 
                 }
                 scan_dir_inner(&path, exts, result, visited, depth + 1);
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if exts.contains(&ext.to_lowercase().as_str()) {
+                // "._Chapter.mp3": macOS resource-fork sidecars left on FAT,
+                // exFAT and SMB volumes and inside zip's __MACOSX folders. Not
+                // audio; each one used to produce a "Skipped: ffprobe failed"
+                // warning.
+                let apple_double = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with("._"))
+                    .unwrap_or(false);
+                if !apple_double && exts.contains(&ext.to_lowercase().as_str()) {
                     if let Some(s) = path.to_str() {
                         result.push(s.to_string());
                     }

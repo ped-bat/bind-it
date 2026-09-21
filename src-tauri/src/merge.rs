@@ -5,7 +5,7 @@ use crate::concat::{
 };
 use rayon::prelude::*;
 use crate::cover::validate_cover_image;
-use crate::probe::{probe_all_files, probe_single_file};
+use crate::probe::{mp3_frame_duration, probe_all_files, probe_single_file};
 use crate::transcode::transcode_parallel;
 use crate::types::{AudioFileInfo, MergeConfig, MergeProgress, Stage};
 use crate::util::{
@@ -97,6 +97,22 @@ impl StreamTarget {
     pub fn is_uniform(&self, probed: &[AudioFileInfo]) -> bool {
         self.outliers(probed).is_empty()
     }
+}
+
+/// Chapter lengths measured from the stripped MP3s that actually get
+/// concatenated. The probe duration of a source counts its Xing frame and
+/// encoder padding, which stripping removes, so markers built from it ran
+/// ~26 ms late per chapter — accumulating to seconds over a long book.
+fn stripped_durations(stripped: &[PathBuf], fallback: &[f64]) -> Vec<f64> {
+    stripped
+        .par_iter()
+        .enumerate()
+        .map(|(i, p)| {
+            p.to_str()
+                .and_then(mp3_frame_duration)
+                .unwrap_or_else(|| fallback.get(i).copied().unwrap_or(0.0))
+        })
+        .collect()
 }
 
 /// Bitrate (kbps) to re-encode outliers at on a preserve path: the average of
@@ -399,6 +415,7 @@ where
 
         let mut stripped_paths: Vec<PathBuf> = Vec::with_capacity(stripped.len());
         for r in stripped { stripped_paths.push(r?); }
+        durations = stripped_durations(&stripped_paths, &durations);
 
         if CANCEL_FLAG.load(Ordering::Relaxed) {
             return Err("Cancelled by user".to_string());
@@ -511,6 +528,7 @@ where
 
         let mut stripped_paths: Vec<PathBuf> = Vec::with_capacity(stripped.len());
         for r in stripped { stripped_paths.push(r?); }
+        durations = stripped_durations(&stripped_paths, &durations);
 
         emit(Stage::Merging, 88.0, "Concatenating MP3 frames");
         let concat_list = tmp_dir.path().join("concat.txt");

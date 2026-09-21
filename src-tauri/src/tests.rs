@@ -909,6 +909,8 @@ fn natural_order_puts_chapter_2_before_chapter_10() {
     for n in ["Chapter 10.m4a", "Chapter 2.m4a", "Chapter 1.m4a"] {
         gen_sine(&tmp.path().join(n), 0.5, 44_100, "aac");
     }
+    // AppleDouble sidecar (FAT/exFAT/SMB volumes, __MACOSX): never a chapter.
+    std::fs::write(tmp.path().join("._Chapter 1.m4a"), b"\0\x05\x16\x07junk").unwrap();
     let dir = tmp.path().to_string_lossy().to_string();
     let inside = tmp.path().join("Chapter 2.m4a").to_string_lossy().to_string();
     let resolved = crate::scan::resolve_audio_paths(vec![dir, inside]);

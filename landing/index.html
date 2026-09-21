@@ -84,7 +84,7 @@
           { "@type": "Question", "name": "Does it handle DRM-protected audio files?",
             "acceptedAnswer": { "@type": "Answer", "text": "No. Audible .aax and iTunes .m4p files are not accepted file types, and anything still encrypted cannot be decoded. Bind it works on unprotected files you already own - it does not remove protection." } },
           { "@type": "Question", "name": "How are chapters detected?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Chapter titles come from filenames by default. You can edit names, order and durations in the review step before binding." } },
+            "acceptedAnswer": { "@type": "Answer", "text": "Chapter titles come from filenames by default. You can edit names and order in the review step before binding." } },
           { "@type": "Question", "name": "Where does the output file go?",
             "acceptedAnswer": { "@type": "Answer", "text": "You pick the destination when you bind. Bind it never touches the source files." } }
         ]
@@ -231,7 +231,7 @@
         </details>
         <details class="reveal">
           <summary>How are chapters detected?</summary>
-          <p>Chapter titles come from filenames by default. You can edit names, order and durations in the review step before binding.</p>
+          <p>Chapter titles come from filenames by default. You can edit names and order in the review step before binding.</p>
         </details>
         <details class="reveal">
           <summary>Where does the output file go?</summary>
@@ -268,7 +268,7 @@
             </a>
           </li>
           <li>
-            <a class="card card-link reveal" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Linux.AppImage" rel="noopener" target="_blank">
+            <a class="card card-link reveal" data-os="linux" href="https://github.com/ped-bat/bind-it/releases/latest/download/Bind-it-Linux.AppImage" rel="noopener" target="_blank">
               <svg class="icon-brand" aria-hidden="true"><use href="icons/sprite.svg#i-linux"/></svg>
               <span>
                 <span class="card-title">Linux</span><span class="sr-only"> (opens in a new tab)</span>
@@ -277,8 +277,13 @@
             </a>
           </li>
         </ul>
-        <p class="download-note">
+        <p class="download-note" data-note="windows">
           Windows may show a SmartScreen warning on first install - click <strong>More info</strong> → <strong>Run anyway</strong>.
+          The .msi installs for all users and asks for admin rights; the release page also has a per-user <strong>.exe</strong> installer that doesn't.
+        </p>
+        <p class="download-note" data-note="linux">
+          Linux: mark the AppImage executable (<code>chmod +x Bind-it-Linux.AppImage</code>) and run it.
+          Needs glibc 2.35 or newer - Ubuntu 22.04, Debian 12, Fedora 36, Mint 21 or later.
         </p>
       </div>
     </section>

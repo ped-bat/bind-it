@@ -578,8 +578,10 @@ section > * {
     visibility 0s linear 220ms;
 }
 
-.dl-block:has(.card-link[data-os="windows"]:hover) .download-note,
-.dl-block:has(.card-link[data-os="windows"]:focus-visible) .download-note {
+.dl-block:has(.card-link[data-os="windows"]:hover) .download-note[data-note="windows"],
+.dl-block:has(.card-link[data-os="windows"]:focus-visible) .download-note[data-note="windows"],
+.dl-block:has(.card-link[data-os="linux"]:hover) .download-note[data-note="linux"],
+.dl-block:has(.card-link[data-os="linux"]:focus-visible) .download-note[data-note="linux"] {
   opacity: 1;
   visibility: visible;
   transform: translate(-50%, 0);
@@ -589,6 +591,7 @@ section > * {
     visibility 0s;
 }
 .download-note strong { color: var(--text); font-weight: 500; }
+.download-note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--text); }
 
 /* ── 11. Support + feedback strip ─────────────────────────────── */
 .strip-section { border-top: 1px solid var(--border); }

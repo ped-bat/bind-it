@@ -132,6 +132,12 @@ jobs:
             windows-x86_64)
               SRC="$(find src-tauri/target/release/bundle/msi -name "*_${VERSION}_*.msi" | head -1)"
               DEST="Bind-it-Windows.msi"
+              # The per-user NSIS installer (no admin prompt) gets a stable name too.
+              EXE="$(find src-tauri/target/release/bundle/nsis -name "*_${VERSION}_*-setup.exe" | head -1)"
+              if [ -n "$EXE" ] && [ -f "$EXE" ]; then
+                cp "$EXE" "Bind-it-Windows-setup.exe"
+                gh release upload "${{ github.ref_name }}" "Bind-it-Windows-setup.exe" --clobber
+              fi
               ;;
             linux-x86_64)
               SRC="$(find src-tauri/target/release/bundle/appimage -name "*_${VERSION}_*.AppImage" | head -1)"

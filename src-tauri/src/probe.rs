@@ -178,3 +178,37 @@ pub fn probe_single_file(path: &str) -> Result<AudioFileInfo, String> {
         file_size,
     })
 }
+
+/// Exact playing time of a stripped MP3 (no Xing header, so ffprobe's
+/// format.duration is only a bitrate estimate): frame count × one frame's
+/// duration. Both are constant within a file. Cheap even for hours of audio.
+pub fn mp3_frame_duration(path: &str) -> Option<f64> {
+    let count = ffprobe()
+        .args([
+            "-v", "error",
+            "-select_streams", "a:0",
+            "-count_packets",
+            "-show_entries", "stream=nb_read_packets",
+            "-of", "csv=p=0",
+            path,
+        ])
+        .output()
+        .ok()?;
+    let frames: u64 = String::from_utf8_lossy(&count.stdout).trim().parse().ok()?;
+    let first = ffprobe()
+        .args([
+            "-v", "error",
+            "-select_streams", "a:0",
+            "-read_intervals", "%+#1",
+            "-show_entries", "packet=duration_time",
+            "-of", "csv=p=0",
+            path,
+        ])
+        .output()
+        .ok()?;
+    let per_frame: f64 = String::from_utf8_lossy(&first.stdout).lines().next()?.trim().parse().ok()?;
+    if frames == 0 || per_frame <= 0.0 {
+        return None;
+    }
+    Some(frames as f64 * per_frame)
+}

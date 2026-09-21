@@ -16,8 +16,11 @@
 
 set -euo pipefail
 
-# FFmpeg release branch for the BtbN (Linux/Windows) sidecars.
+# FFmpeg release branch for the BtbN (Linux/Windows) sidecars, and the
+# evermeet.cx release for macOS Intel. (osxexperts' Apple Silicon build is
+# pinned by its filename, ffmpeg71arm.zip.)
 BTBN_BRANCH="${BTBN_BRANCH:-8.1}"
+EVERMEET_VERSION="${EVERMEET_VERSION:-8.1}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT/src-tauri/binaries"
@@ -93,12 +96,14 @@ fetch_btbn() {
 }
 
 fetch_evermeet() {
-  # evermeet.cx ships ffmpeg and ffprobe as separate zips (x86_64-apple-darwin)
+  # evermeet.cx ships ffmpeg and ffprobe as separate zips (x86_64-apple-darwin).
+  # Versioned URL rather than getrelease/…, which silently tracks the newest
+  # release (it moved 7.1 → 9.0 between two builds of v1.0.0).
   local triple="$1"
   echo "→ $triple"
   for bin in ffmpeg ffprobe; do
     local zip_path="$TMP_DIR/$bin-$triple.zip"
-    curl -fsSL -o "$zip_path" "https://evermeet.cx/ffmpeg/getrelease/$bin/zip"
+    curl -fsSL -o "$zip_path" "https://evermeet.cx/ffmpeg/${bin}-${EVERMEET_VERSION}.zip"
     local extract_dir="$TMP_DIR/extract-$bin-$triple"
     mkdir -p "$extract_dir"
     extract_zip "$zip_path" "$extract_dir"

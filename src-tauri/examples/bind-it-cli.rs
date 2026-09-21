@@ -119,7 +119,13 @@ fn folder_audio_files(dir: &Path) -> Vec<PathBuf> {
         let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
             continue;
         };
-        if AUDIO_EXTS.contains(&ext.to_lowercase().as_str()) {
+        // macOS "._" resource-fork sidecars are not audio.
+        let apple_double = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("._"))
+            .unwrap_or(false);
+        if !apple_double && AUDIO_EXTS.contains(&ext.to_lowercase().as_str()) {
             files.push(path);
         }
     }
@@ -191,6 +197,16 @@ fn collect_books(
     }
 }
 
+fn all_mp3(files: &[PathBuf]) -> bool {
+    !files.is_empty()
+        && files.iter().all(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("mp3"))
+                .unwrap_or(false)
+        })
+}
+
 fn decide_output_codec(files: &[PathBuf]) -> Option<String> {
     // Mirrors the frontend logic: if all files share the same native-to-M4B codec
     // (aac/mp3/alac), let the backend pick remux or outlier-only re-encode.
@@ -230,6 +246,15 @@ fn merge_one(book: &Path, args: &Args) -> MergeOutcome {
         .and_then(|n| n.to_str())
         .unwrap_or("audio_files")
         .to_string();
+    // Finder shows a "/" typed into a folder name; POSIX stores ":". The
+    // merge rejects ":" in output names, so map it back for the filename.
+    let stem: String = title
+        .chars()
+        .map(|c| if matches!(c, ':' | '/' | '\\' | '*' | '?' | '"' | '<' | '>' | '|') { '-' } else { c })
+        .collect::<String>()
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
 
     let output_dir = args
         .output
@@ -240,7 +265,12 @@ fn merge_one(book: &Path, args: &Args) -> MergeOutcome {
         return MergeOutcome::Failed(format!("mkdir {output_dir:?}: {e}"));
     }
 
-    let output_filename = format!("{title}.m4b");
+    // A uniform MP3 set comes out as .mp3, everything else as .m4b; the
+    // skip/overwrite check must look at the name the merge will produce, or
+    // every run of an MP3 book writes another " (N).mp3".
+    let output_codec = if args.compress { None } else { decide_output_codec(&files) };
+    let ext = if !args.compress && output_codec.is_none() && all_mp3(&files) { "mp3" } else { "m4b" };
+    let output_filename = format!("{stem}.{ext}");
     let final_path = output_dir.join(&output_filename);
     if final_path.exists() {
         if args.overwrite {
@@ -253,12 +283,6 @@ fn merge_one(book: &Path, args: &Args) -> MergeOutcome {
     }
 
     let cover = find_cover(book);
-
-    let output_codec = if args.compress {
-        None
-    } else {
-        decide_output_codec(&files)
-    };
 
     let file_entries: Vec<FileEntry> = files
         .iter()

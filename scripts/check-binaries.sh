@@ -58,7 +58,10 @@ for f in "$BIN_DIR"/ffmpeg-* "$BIN_DIR"/ffprobe-*; do
   fi
 
   if [[ "$name" == *linux-gnu* ]] && command -v ldd >/dev/null 2>&1 && [[ "$(uname -s)" == "Linux" ]]; then
-    extra="$(ldd "$f" 2>/dev/null | grep -vE 'linux-vdso|ld-linux|libc\.so|libm\.so|libpthread\.so|libdl\.so|librt\.so|libgcc_s\.so|statically linked' || true)"
+    # Everything glibc itself ships (libmvec is its vector-math library),
+    # plus the compiler runtime, is expected; anything else would be missing
+    # on a user's machine.
+    extra="$(ldd "$f" 2>/dev/null | grep -vE 'linux-vdso|ld-linux|libc\.so|libm\.so|libmvec\.so|libpthread\.so|libdl\.so|librt\.so|libresolv\.so|libnsl\.so|libutil\.so|libcrypt\.so|libanl\.so|libgcc_s\.so|statically linked' || true)"
     if [[ -n "$extra" ]]; then
       echo "✗ $name depends on libraries outside glibc:" >&2
       echo "$extra" >&2

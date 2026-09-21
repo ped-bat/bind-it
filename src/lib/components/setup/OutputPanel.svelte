@@ -24,6 +24,7 @@
       const dir = await browseFolder(settingsStore.outputDir);
       if (dir) {
         settingsStore.outputDir = dir;
+        settingsStore.rememberOutputDir();
         settingsStore.persistOutputDir();
       }
     } finally {
@@ -52,6 +53,7 @@
             class="u-input u-input--sm"
             type="text"
             bind:value={settingsStore.outputDir}
+            onchange={() => settingsStore.rememberOutputDir()}
             placeholder="Output folder"
             aria-invalid={showFolderError}
           />

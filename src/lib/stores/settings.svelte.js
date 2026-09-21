@@ -1,3 +1,5 @@
+import { dirExists } from "$lib/services/tauri.js";
+
 const STORAGE_KEY = "bindit:quality";
 const OUTPUT_DIR_KEY = "bindit:outputDir";
 const MP3_CHOICE_KEY = "bindit:mp3FormatChoice";
@@ -93,6 +95,13 @@ export function normalizeOutputDir(dir) {
 class SettingsStore {
   outputDir = $state(loadOutputDir());
   outputFilename = $state("audio");
+  /**
+   * Output folder the user picked or typed during this session. It survives
+   * Bind another and Clear so the next batch lands in the same place, but it
+   * is deliberately not persisted: closing the app forgets it.
+   * @type {string | null}
+   */
+  chosenOutputDir = $state(null);
 
   // Persisted values come from localStorage and may be stale or hand-edited;
   // anything outside the UI's option set falls back to the default (an
@@ -134,6 +143,29 @@ class SettingsStore {
     const parts = filePath.split(/[\\/]/);
     parts.pop();
     this.outputDir = normalizeOutputDir(parts.join(sep));
+  }
+
+  /** Record the current folder as the user's explicit choice for this session. */
+  rememberOutputDir() {
+    this.chosenOutputDir = normalizeOutputDir(this.outputDir) || null;
+  }
+
+  /**
+   * Output folder for a fresh batch: the folder chosen earlier this session
+   * if it still exists, otherwise the first file's own folder.
+   * @param {string} filePath
+   */
+  async setOutputDirForNewBatch(filePath) {
+    const chosen = this.chosenOutputDir;
+    if (chosen) {
+      let exists = false;
+      try { exists = await dirExists(chosen); } catch { /* treat as missing */ }
+      if (exists) {
+        this.outputDir = chosen;
+        return;
+      }
+    }
+    this.setOutputDirFromFile(filePath);
   }
 
   /**

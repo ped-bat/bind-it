@@ -17,7 +17,7 @@ use binaries::check_ffmpeg;
 use cover::{get_cover_art, set_custom_cover_art};
 use merge::{cancel_merge, merge_audio_files};
 use plan::get_merge_plan;
-use preflight::preflight_check;
+use preflight::{dir_exists, preflight_check};
 use probe::probe_files;
 use scan::resolve_audio_paths;
 
@@ -28,6 +28,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             preflight_check,
+            dir_exists,
             probe_files,
             get_cover_art,
             set_custom_cover_art,

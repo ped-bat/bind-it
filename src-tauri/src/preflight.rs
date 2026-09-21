@@ -3,6 +3,14 @@ use crate::types::PreflightResult;
 use std::fs;
 use std::path::Path;
 
+/// Whether a folder the user picked earlier is still there. A deleted folder
+/// or an unmounted drive must not be reused silently for the next batch.
+#[tauri::command]
+pub fn dir_exists(path: String) -> bool {
+    let p = Path::new(&path);
+    p.is_absolute() && p.is_dir()
+}
+
 #[tauri::command]
 pub fn preflight_check(
     files: Vec<String>,

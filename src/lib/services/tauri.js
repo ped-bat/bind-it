@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ask, open } from "@tauri-apps/plugin-dialog";
+import { dropTargetAt, firstImagePath, hasDropTarget } from "./dropTarget.js";
 
 // ── Tauri invoke wrappers ───────────────────────────────────────────────────
 
@@ -21,6 +22,8 @@ export const mergeAudioFiles = (config) => invoke("merge_audio_files", { config 
 export const cancelMerge = () => invoke("cancel_merge");
 /** @param {{ files: string[], outputDir: string, outputFilename: string, outputExtension?: string }} args */
 export const preflightCheck = (args) => invoke("preflight_check", args);
+/** @param {string} path */
+export const dirExists = (path) => invoke("dir_exists", { path });
 
 export async function revealInFolder(/** @type {string} */ path) {
   const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
@@ -94,7 +97,8 @@ export async function browseFolderAndResolve() {
  * @param {() => void} handlers.onCancelled
  * @param {(paths: string[], folderName: string | null) => void} handlers.onFileDrop
  * @param {(message: string) => void} handlers.onDropError
- * @param {(over: boolean) => void} handlers.onDragState
+ * @param {(over: boolean, target: import("./dropTarget.js").DropTarget) => void} handlers.onDragState
+ * @param {(path: string) => void} handlers.onCoverDrop
  * @returns {Promise<() => void>} cleanup function
  */
 export async function setupListeners(handlers) {
@@ -115,22 +119,33 @@ export async function setupListeners(handlers) {
   // come from here rather than DOM dragover/dragleave.
   const unlistenDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
     const type = event.payload.type;
-    if (type === "enter" || type === "over") {
-      safe(() => handlers.onDragState(true))();
+    if (type === "leave") {
+      safe(() => handlers.onDragState(false, null))();
       return;
     }
-    if (type === "leave") {
-      safe(() => handlers.onDragState(false))();
+    // The drop position decides where the files go: an image dropped on the
+    // cover square becomes the cover, anything else is treated as chapters.
+    const target = dropTargetAt(event.payload.position);
+    if (type === "enter" || type === "over") {
+      safe(() => handlers.onDragState(true, target))();
       return;
     }
     if (type !== "drop") return;
-    safe(() => handlers.onDragState(false))();
+    safe(() => handlers.onDragState(false, null))();
     const paths = event.payload.paths || [];
     if (paths.length === 0) return;
+    if (target === "cover") {
+      const image = firstImagePath(paths);
+      if (image) safe(() => handlers.onCoverDrop(image))();
+      else safe(() => handlers.onDropError("Drop a JPG or PNG image on the cover square to use it as cover art."))();
+      return;
+    }
     try {
       const result = await resolveAudioPaths(paths);
       if (result.paths.length > 0) {
         safe(() => handlers.onFileDrop(result.paths, result.folder_name))();
+      } else if (firstImagePath(paths) && hasDropTarget("cover")) {
+        safe(() => handlers.onDropError("No audio files in the drop. To use an image as the cover, drop it on the cover square."))();
       } else {
         safe(() => handlers.onDropError("No supported audio files found in dropped items."))();
       }

@@ -17,6 +17,8 @@ class FileStore {
   // Set when the user removed the cover: adding more chapters must not
   // quietly bring it back (and embed it in the output).
   coverDismissed = $state(false);
+  // A custom cover is being validated (dialog pick or drop) — blocks a second one.
+  coverPending = $state(false);
   /** @type {{ strategy: string, needs_transcode: string[], total_duration: number } | null} */
   mergePlan = $state(null);
 
@@ -124,6 +126,15 @@ class FileStore {
       // no explanation; the merge itself recomputes everything backend-side.
       console.warn("getMergePlan failed:", e);
     }
+  }
+
+  /**
+   * @param {string} dataUri
+   * @param {string} path
+   */
+  setCover(dataUri, path) {
+    this.coverArt = dataUri;
+    this.coverArtPath = path;
   }
 
   dismissCover() {

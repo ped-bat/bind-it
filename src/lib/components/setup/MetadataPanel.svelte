@@ -6,26 +6,7 @@
   import { fileStore } from "$lib/stores/files.svelte.js";
   import { metadataStore } from "$lib/stores/metadata.svelte.js";
   import { appStore } from "$lib/stores/app.svelte.js";
-  import { browseImage, setCustomCoverArt } from "$lib/services/tauri.js";
-
-  let coverPending = $state(false);
-
-  async function handleChooseCoverArt() {
-    if (coverPending) return;
-    coverPending = true;
-    try {
-      const path = await browseImage();
-      if (path) {
-        const art = await setCustomCoverArt(path);
-        fileStore.coverArt = art.data_uri;
-        fileStore.coverArtPath = art.file_path;
-      }
-    } catch (e) {
-      appStore.error = String(e);
-    } finally {
-      coverPending = false;
-    }
-  }
+  import { chooseCoverArt } from "$lib/services/actions.js";
 
   function clearCover(/** @type {MouseEvent} */ e) {
     e.stopPropagation();
@@ -35,9 +16,11 @@
 
 <Panel title="Metadata">
   <div class="metadata-content">
-    <div class="cover-art-container">
+    <!-- data-drop-target lets the native drop handler (setupListeners) tell a
+         drop on this square apart from a drop anywhere else in the window. -->
+    <div class="cover-art-container" class:drag-over={appStore.coverDragOver} data-drop-target="cover">
       {#if fileStore.coverArt}
-        <button class="cover-art-btn" onclick={handleChooseCoverArt} disabled={coverPending} aria-label="Change cover art">
+        <button class="cover-art-btn" onclick={chooseCoverArt} disabled={fileStore.coverPending} aria-label="Change cover art" title="Click to change, or drop a JPG/PNG here">
           <img class="cover-art" src={fileStore.coverArt} alt="Cover art" />
         </button>
         <div class="cover-remove">
@@ -53,7 +36,7 @@
           </IconButton>
         </div>
       {:else}
-        <button class="cover-art-btn cover-placeholder" onclick={handleChooseCoverArt} disabled={coverPending} aria-label="Choose cover art (no cover detected — click to choose image)" title="No cover detected — click to choose image">
+        <button class="cover-art-btn cover-placeholder" onclick={chooseCoverArt} disabled={fileStore.coverPending} aria-label="Choose cover art (no cover detected — click to choose an image, or drop a JPG or PNG here)" title="No cover detected — click to choose, or drop a JPG/PNG here">
           <Icon name="image-placeholder" width={32} height={32} />
         </button>
       {/if}
@@ -159,6 +142,15 @@
   .cover-placeholder:hover {
     border-color: var(--accent);
     opacity: var(--opacity-strong);
+  }
+
+  /* An image being dragged over the square: same emphasis as hover, so the
+     user can see the drop will land on the cover and not in the chapters. */
+  .cover-art-container.drag-over .cover-art,
+  .cover-art-container.drag-over .cover-placeholder {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-focus-strong);
+    opacity: 1;
   }
 
   .metadata-fields {

@@ -983,3 +983,16 @@ fn debug_builds_use_the_bundled_sidecar() {
     assert!(Path::new(FFMPEG_PATH.as_str()).starts_with(&expected_dir), "FFMPEG_PATH = {}", *FFMPEG_PATH);
     assert!(Path::new(FFPROBE_PATH.as_str()).starts_with(&expected_dir), "FFPROBE_PATH = {}", *FFPROBE_PATH);
 }
+
+#[test]
+fn dir_exists_only_for_absolute_existing_directories() {
+    let tmp = std::env::temp_dir();
+    assert!(crate::preflight::dir_exists(tmp.to_string_lossy().into_owned()));
+    let missing = tmp.join("bind_it_definitely_missing_dir");
+    assert!(!crate::preflight::dir_exists(missing.to_string_lossy().into_owned()));
+    assert!(!crate::preflight::dir_exists("relative/path".to_string()));
+    let file = tmp.join("bind_it_dir_exists_probe");
+    std::fs::write(&file, b"x").unwrap();
+    assert!(!crate::preflight::dir_exists(file.to_string_lossy().into_owned()));
+    let _ = std::fs::remove_file(&file);
+}

@@ -22,6 +22,8 @@ export const mergeAudioFiles = (config) => invoke("merge_audio_files", { config 
 export const cancelMerge = () => invoke("cancel_merge");
 /** @param {{ files: string[], outputDir: string, outputFilename: string, outputExtension?: string }} args */
 export const preflightCheck = (args) => invoke("preflight_check", args);
+/** @param {string} path */
+export const dirExists = (path) => invoke("dir_exists", { path });
 
 export async function revealInFolder(/** @type {string} */ path) {
   const { revealItemInDir } = await import("@tauri-apps/plugin-opener");

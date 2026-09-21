@@ -35,7 +35,7 @@ export async function addFiles(paths, folderName = null) {
     announce: (msg) => appStore.announce(msg),
   });
   if (result?.firstFile) {
-    if (wasEmpty) settingsStore.setOutputDirFromFile(result.firstFile.path);
+    if (wasEmpty) await settingsStore.setOutputDirForNewBatch(result.firstFile.path);
     metadataStore.populateFrom(result.firstFile);
     settingsStore.setFilenameFrom(folderName, result.firstFile);
   }

@@ -15,6 +15,8 @@ class AppStore {
   /** @type {boolean | null} */
   ffmpegOk = $state(null);
   dragOver = $state(false);
+  // A drag is hovering the cover square specifically (see setupListeners).
+  coverDragOver = $state(false);
   liveAnnouncement = $state("");
   // Set to true once the user has attempted to submit; flips required-field
   // validation styling on. Cleared on successful submit / clearAll.

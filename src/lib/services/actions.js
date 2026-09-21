@@ -2,7 +2,7 @@ import { appStore } from "$lib/stores/app.svelte.js";
 import { fileStore } from "$lib/stores/files.svelte.js";
 import { settingsStore } from "$lib/stores/settings.svelte.js";
 import { metadataStore } from "$lib/stores/metadata.svelte.js";
-import { browseFiles, browseFolderAndResolve, confirmAsk } from "$lib/services/tauri.js";
+import { browseFiles, browseFolderAndResolve, browseImage, confirmAsk, setCustomCoverArt } from "$lib/services/tauri.js";
 
 /**
  * Shared destructive-clear flow: every path that wipes the session (Cancel
@@ -49,4 +49,29 @@ export async function addFilesFromBrowse() {
 export async function addFilesFromFolder() {
   const result = await browseFolderAndResolve();
   if (result) await addFiles(result.paths, result.folderName);
+}
+
+/**
+ * Shared set-cover flow, used by the cover square's click and by images
+ * dropped onto it: validate through the backend, then swap the cover in.
+ * @param {string} path
+ */
+export async function setCoverFromPath(path) {
+  if (fileStore.coverPending) return;
+  fileStore.coverPending = true;
+  try {
+    const art = await setCustomCoverArt(path);
+    fileStore.setCover(art.data_uri, art.file_path);
+    appStore.announce("Cover art set");
+  } catch (e) {
+    appStore.error = String(e);
+  } finally {
+    fileStore.coverPending = false;
+  }
+}
+
+export async function chooseCoverArt() {
+  if (fileStore.coverPending) return;
+  const path = await browseImage();
+  if (path) await setCoverFromPath(path);
 }

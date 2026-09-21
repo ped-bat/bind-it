@@ -4,7 +4,7 @@
   import { fileStore } from "$lib/stores/files.svelte.js";
   import { conversionStore } from "$lib/stores/conversion.svelte.js";
   import { checkFfmpeg, setupListeners } from "$lib/services/tauri.js";
-  import { addFiles, addFilesFromBrowse, clearAllWithConfirm } from "$lib/services/actions.js";
+  import { addFiles, addFilesFromBrowse, clearAllWithConfirm, setCoverFromPath } from "$lib/services/actions.js";
   import SetupScreen from "$lib/components/screens/SetupScreen.svelte";
   import ConvertingScreen from "$lib/components/screens/ConvertingScreen.svelte";
   import CompleteScreen from "$lib/components/screens/CompleteScreen.svelte";
@@ -35,8 +35,13 @@
       onDropError: (msg) => {
         if (appStore.screen === "setup") appStore.error = msg;
       },
-      onDragState: (over) => {
-        appStore.dragOver = over && appStore.screen === "setup";
+      onCoverDrop: (path) => {
+        if (appStore.screen === "setup") setCoverFromPath(path);
+      },
+      onDragState: (over, target) => {
+        const active = over && appStore.screen === "setup";
+        appStore.coverDragOver = active && target === "cover";
+        appStore.dragOver = active && target !== "cover";
       },
     });
 

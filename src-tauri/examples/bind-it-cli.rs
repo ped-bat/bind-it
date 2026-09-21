@@ -1,7 +1,7 @@
 use bind_it_lib::merge::merge_audio_files_core;
 use bind_it_lib::probe::probe_all_files;
 use bind_it_lib::types::{FileEntry, MergeConfig, Stage};
-use bind_it_lib::util::clean_chapter_name;
+use bind_it_lib::util::{clean_chapter_name, natural_cmp};
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -119,11 +119,17 @@ fn folder_audio_files(dir: &Path) -> Vec<PathBuf> {
         let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
             continue;
         };
-        if AUDIO_EXTS.contains(&ext.to_lowercase().as_str()) {
+        // macOS "._" resource-fork sidecars are not audio.
+        let apple_double = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("._"))
+            .unwrap_or(false);
+        if !apple_double && AUDIO_EXTS.contains(&ext.to_lowercase().as_str()) {
             files.push(path);
         }
     }
-    files.sort();
+    files.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
     files
 }
 
@@ -158,11 +164,14 @@ fn collect_books(
     out: &mut Vec<PathBuf>,
 ) {
     let canonical = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
-    if !seen.insert(canonical) {
+    if !seen.insert(canonical.clone()) {
         return;
     }
-    if !folder_audio_files(dir).is_empty() {
-        out.push(dir.to_path_buf());
+    // Absolute paths only: the merge writes them into an ffmpeg concat list
+    // inside a temp dir, where a relative path resolves against the wrong
+    // directory and the concat demuxer silently truncates the output.
+    if !folder_audio_files(&canonical).is_empty() {
+        out.push(canonical);
     }
     // depth==0 always descends one level so "give me a library dir" works.
     let descend = recursive || depth == 0;
@@ -186,6 +195,16 @@ fn collect_books(
         }
         collect_books(&sub, recursive, depth + 1, seen, out);
     }
+}
+
+fn all_mp3(files: &[PathBuf]) -> bool {
+    !files.is_empty()
+        && files.iter().all(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("mp3"))
+                .unwrap_or(false)
+        })
 }
 
 fn decide_output_codec(files: &[PathBuf]) -> Option<String> {
@@ -227,6 +246,15 @@ fn merge_one(book: &Path, args: &Args) -> MergeOutcome {
         .and_then(|n| n.to_str())
         .unwrap_or("audio_files")
         .to_string();
+    // Finder shows a "/" typed into a folder name; POSIX stores ":". The
+    // merge rejects ":" in output names, so map it back for the filename.
+    let stem: String = title
+        .chars()
+        .map(|c| if matches!(c, ':' | '/' | '\\' | '*' | '?' | '"' | '<' | '>' | '|') { '-' } else { c })
+        .collect::<String>()
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
 
     let output_dir = args
         .output
@@ -237,7 +265,12 @@ fn merge_one(book: &Path, args: &Args) -> MergeOutcome {
         return MergeOutcome::Failed(format!("mkdir {output_dir:?}: {e}"));
     }
 
-    let output_filename = format!("{title}.m4b");
+    // A uniform MP3 set comes out as .mp3, everything else as .m4b; the
+    // skip/overwrite check must look at the name the merge will produce, or
+    // every run of an MP3 book writes another " (N).mp3".
+    let output_codec = if args.compress { None } else { decide_output_codec(&files) };
+    let ext = if !args.compress && output_codec.is_none() && all_mp3(&files) { "mp3" } else { "m4b" };
+    let output_filename = format!("{stem}.{ext}");
     let final_path = output_dir.join(&output_filename);
     if final_path.exists() {
         if args.overwrite {
@@ -250,12 +283,6 @@ fn merge_one(book: &Path, args: &Args) -> MergeOutcome {
     }
 
     let cover = find_cover(book);
-
-    let output_codec = if args.compress {
-        None
-    } else {
-        decide_output_codec(&files)
-    };
 
     let file_entries: Vec<FileEntry> = files
         .iter()

@@ -16,9 +16,10 @@
     try {
       await checkFfmpeg();
       appStore.ffmpegOk = true;
-    } catch {
+    } catch (e) {
       appStore.ffmpegOk = false;
-      appStore.error = "ffmpeg/ffprobe not found. Please install ffmpeg.";
+      // The backend's message carries the per-platform hint.
+      appStore.error = typeof e === "string" && e ? e : "ffmpeg/ffprobe not found. Please install ffmpeg.";
     }
 
     cleanup = await setupListeners({

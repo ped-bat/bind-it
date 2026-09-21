@@ -14,6 +14,9 @@ class FileStore {
   coverArt = $state(null);
   /** @type {string | null} */
   coverArtPath = $state(null);
+  // Set when the user removed the cover: adding more chapters must not
+  // quietly bring it back (and embed it in the output).
+  coverDismissed = $state(false);
   /** @type {{ strategy: string, needs_transcode: string[], total_duration: number } | null} */
   mergePlan = $state(null);
 
@@ -46,8 +49,17 @@ class FileStore {
         setWarning(result.warnings.join("\n"));
       }
 
-      const existingPaths = new Set(this.items.map(f => f.path));
-      const newFiles = result.files.filter((/** @type {any} */ f) => !existingPaths.has(f.path));
+      // Skip paths already listed *and* repeats inside this batch (a folder
+      // dropped together with a file inside it): the list is keyed by path
+      // and a duplicate key throws in production, leaving the app stuck.
+      const seen = new Set(this.items.map(f => f.path));
+      /** @type {any[]} */
+      const newFiles = [];
+      for (const f of result.files) {
+        if (seen.has(f.path)) continue;
+        seen.add(f.path);
+        newFiles.push(f);
+      }
       this.items = [...this.items, ...newFiles];
 
       if (newFiles.length > 0) {
@@ -56,7 +68,7 @@ class FileStore {
 
       // Cover art is a nice-to-have: a failure here must not abort the add
       // or skip the merge-plan refresh.
-      if (!this.coverArt) {
+      if (!this.coverArt && !this.coverDismissed) {
         try {
           const art = await getCoverArt(this.items.map(f => f.path));
           if (art) {
@@ -114,10 +126,17 @@ class FileStore {
     }
   }
 
+  dismissCover() {
+    this.coverArt = null;
+    this.coverArtPath = null;
+    this.coverDismissed = true;
+  }
+
   clear() {
     this.items = [];
     this.coverArt = null;
     this.coverArtPath = null;
+    this.coverDismissed = false;
     this.mergePlan = null;
   }
 }

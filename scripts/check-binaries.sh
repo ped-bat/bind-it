@@ -12,6 +12,9 @@
 #      10 MB is almost certainly a dynamic stub.
 #   2. (Mach-O, macOS host only) otool -L must not reference Homebrew,
 #      MacPorts, or /usr/local library paths.
+#   3. (ELF, Linux host only) ldd must list nothing beyond glibc itself —
+#      the BtbN builds link libc dynamically (fine: glibc 2.28+) but every
+#      other library is expected to be built in.
 
 set -euo pipefail
 
@@ -49,6 +52,19 @@ for f in "$BIN_DIR"/ffmpeg-* "$BIN_DIR"/ffprobe-*; do
       echo "✗ $name links against non-system libraries:" >&2
       echo "$bad_refs" >&2
       echo "  Re-run scripts/fetch-binaries.sh to get a static build." >&2
+      fail=1
+      continue
+    fi
+  fi
+
+  if [[ "$name" == *linux-gnu* ]] && command -v ldd >/dev/null 2>&1 && [[ "$(uname -s)" == "Linux" ]]; then
+    # Everything glibc itself ships (libmvec is its vector-math library),
+    # plus the compiler runtime, is expected; anything else would be missing
+    # on a user's machine.
+    extra="$(ldd "$f" 2>/dev/null | grep -vE 'linux-vdso|ld-linux|libc\.so|libm\.so|libmvec\.so|libpthread\.so|libdl\.so|librt\.so|libresolv\.so|libnsl\.so|libutil\.so|libcrypt\.so|libanl\.so|libgcc_s\.so|statically linked' || true)"
+    if [[ -n "$extra" ]]; then
+      echo "✗ $name depends on libraries outside glibc:" >&2
+      echo "$extra" >&2
       fail=1
       continue
     fi

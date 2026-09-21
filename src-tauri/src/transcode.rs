@@ -6,13 +6,18 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// aac_at (AudioToolbox) rejects bitrates above roughly 3.5 bits per sample
-/// per channel, with a practical ceiling of 320 kbps. Clamp the requested
-/// bitrate so the encoder can always open, regardless of SR/channel combo.
-fn clamp_aac_bitrate(bitrate: &str, sample_rate: u32, channels: u32) -> String {
+/// per channel at 44.1 kHz and up, with a practical ceiling of 320 kbps. Below
+/// 44.1 kHz the real limit is lower — measured with the bundled ffmpeg:
+/// 22.05 kHz mono takes 64 kbps and rejects 66 kbps, 22.05 kHz stereo takes
+/// 128 kbps and rejects 140 kbps — so use 2.9 bits/sample/channel there.
+/// A rejected bitrate does not fail loudly: ffmpeg writes an empty file and
+/// exits 0. Clamp the requested bitrate so the encoder can always open.
+pub fn clamp_aac_bitrate(bitrate: &str, sample_rate: u32, channels: u32) -> String {
     let Ok(kbps) = bitrate.trim_end_matches('k').parse::<u32>() else {
         return bitrate.to_string();
     };
-    let ceiling = ((sample_rate as u64 * channels as u64 * 7) / 2_000) as u32;
+    let milli_bits_per_sample: u64 = if sample_rate >= 44_100 { 3_500 } else { 2_900 };
+    let ceiling = ((sample_rate as u64 * channels as u64 * milli_bits_per_sample) / 1_000_000) as u32;
     let max_kbps = ceiling.clamp(32, 320);
     format!("{}k", kbps.min(max_kbps))
 }
@@ -25,6 +30,8 @@ pub fn transcode_parallel<F>(
     bitrate: &str,
     channels: Option<&str>,
     sample_rate: Option<u32>,
+    exact_sample_rate: bool,
+    bit_depth: Option<u32>,
     durations: &[f64],
     emit: &F,
     pct_start: f64,
@@ -66,9 +73,14 @@ where
 
                 // aac_at caps bitrate by (sample_rate × channels). 22 kHz sources
                 // paired with typical voice-content bitrates fail to open the encoder.
-                // Upsample to 44.1 kHz minimum when encoding to AAC.
+                // Upsample to 44.1 kHz minimum when encoding to AAC — unless the
+                // caller is normalising outliers to match files that pass through
+                // untouched: then the requested rate must be honoured exactly, or
+                // the concatenated stream changes sample rate mid-way, ffmpeg drops
+                // everything after the change (still exiting 0) and Apple's decoder
+                // refuses the file. clamp_aac_bitrate keeps the encoder happy there.
                 let effective_sr = match (is_aac, sample_rate) {
-                    (true, Some(sr)) if sr < 44_100 => Some(44_100),
+                    (true, Some(sr)) if sr < 44_100 && !exact_sample_rate => Some(44_100),
                     (true, None) => Some(44_100),
                     (_, sr) => sr,
                 };
@@ -79,11 +91,18 @@ where
                     _ => 2,
                 };
 
-                let encode_bitrate = if is_aac {
-                    clamp_aac_bitrate(bitrate, effective_sr.unwrap_or(44_100), effective_ch)
-                } else {
-                    bitrate.to_string()
-                };
+                // aac_at's real bitrate ceiling is an undocumented table (44.1 kHz
+                // mono takes 256k but not 320k; 22.05 kHz mono takes 64k but not
+                // 66k). Ask for what the user chose; if the encoder produces
+                // nothing, fall back to the conservative clamp — never silently
+                // cap a bitrate the encoder would have accepted.
+                let clamped_bitrate = clamp_aac_bitrate(bitrate, effective_sr.unwrap_or(44_100), effective_ch);
+                let mut attempts: Vec<String> = vec![bitrate.to_string()];
+                if is_aac && clamped_bitrate != bitrate {
+                    attempts.push(clamped_bitrate);
+                }
+                let mut last_err = String::new();
+                for encode_bitrate in attempts {
 
                 let mut args = vec![
                     "-y".to_string(),
@@ -94,7 +113,7 @@ where
 
                 if is_aac {
                     args.push("-b:a".to_string());
-                    args.push(encode_bitrate);
+                    args.push(encode_bitrate.clone());
                     match codec {
                         "aac_at" => {
                             // Constrained VBR — bitrate-targeted but varies per frame.
@@ -121,6 +140,15 @@ where
                     args.push(ch.to_string());
                 }
 
+                // ALAC keeps the source bit depth; when normalising outliers to
+                // sit next to pass-through files the depth must match too.
+                if codec == "alac" {
+                    if let Some(bits) = bit_depth.filter(|&b| b > 0) {
+                        args.push("-sample_fmt".to_string());
+                        args.push(if bits > 16 { "s32p" } else { "s16p" }.to_string());
+                    }
+                }
+
                 args.push("-threads".to_string());
                 args.push("0".to_string());
                 args.push("-vn".to_string());
@@ -130,7 +158,7 @@ where
                     args.push(sr.to_string());
                 }
 
-                args.push(temp_str);
+                args.push(temp_str.clone());
 
                 let mut child = ffmpeg()
                     .args(&args)
@@ -208,12 +236,19 @@ where
                 if let Some(t) = stdout_thread { let _ = t.join(); }
                 if let Some(t) = stderr_thread { let _ = t.join(); }
 
-                if !status.success() {
-                    let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
-                    return Err(format!(
-                        "Transcode failed for {}: {}",
-                        path, stderr
-                    ));
+                let stderr = stderr_buf.lock().map(|g| g.clone()).unwrap_or_default();
+                let produced = std::fs::metadata(&temp_out).map(|m| m.len() > 0).unwrap_or(false);
+                if status.success() && produced {
+                    last_err.clear();
+                    break;
+                }
+                last_err = format!("Transcode failed for {}: {}", path, stderr);
+                if !status.success() && !stderr.contains("received no packets") {
+                    break;
+                }
+                } // attempts
+                if !last_err.is_empty() {
+                    return Err(last_err);
                 }
 
                 let new_completed_dur = {

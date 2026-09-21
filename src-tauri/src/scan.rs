@@ -1,4 +1,5 @@
 use crate::types::ResolvedPaths;
+use crate::util::natural_cmp;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -45,7 +46,11 @@ pub fn resolve_audio_paths(paths: Vec<String>) -> ResolvedPaths {
             }
         }
     }
-    result.sort();
+    // "Chapter 2" before "Chapter 10"; and a folder dropped together with a
+    // file inside it must not list that file twice (the chapter list is
+    // keyed by path — a duplicate key crashes the UI).
+    result.sort_by(|a, b| natural_cmp(a, b));
+    result.dedup();
 
     ResolvedPaths { paths: result, folder_name }
 }
@@ -76,7 +81,7 @@ fn scan_dir_inner(dir: &Path, exts: &[&str], result: &mut Vec<String>, visited: 
     }
     if let Ok(entries) = fs::read_dir(dir) {
         let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
-        entries.sort_by_key(|e| e.path());
+        entries.sort_by(|a, b| natural_cmp(&a.path().to_string_lossy(), &b.path().to_string_lossy()));
         for entry in entries {
             let path = entry.path();
             if path.is_dir() {
@@ -87,7 +92,16 @@ fn scan_dir_inner(dir: &Path, exts: &[&str], result: &mut Vec<String>, visited: 
                 }
                 scan_dir_inner(&path, exts, result, visited, depth + 1);
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if exts.contains(&ext.to_lowercase().as_str()) {
+                // "._Chapter.mp3": macOS resource-fork sidecars left on FAT,
+                // exFAT and SMB volumes and inside zip's __MACOSX folders. Not
+                // audio; each one used to produce a "Skipped: ffprobe failed"
+                // warning.
+                let apple_double = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with("._"))
+                    .unwrap_or(false);
+                if !apple_double && exts.contains(&ext.to_lowercase().as_str()) {
                     if let Some(s) = path.to_str() {
                         result.push(s.to_string());
                     }

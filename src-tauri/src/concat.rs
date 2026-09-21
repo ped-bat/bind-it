@@ -43,10 +43,10 @@ pub fn strip_mp3_for_concat(input: &str, output: &Path) -> Result<(), String> {
 }
 
 /// Decode a single MPEG audio frame header. Returns (frame_size_bytes,
-/// frame_duration_ms) for Layer III frames (the only layer that's relevant
-/// for typical audio-file MP3s). Returns None for invalid/non-Layer-III headers so the
-/// caller can resync.
-fn mp3_frame_info(h: u32) -> Option<(usize, u64)> {
+/// samples_per_frame, sample_rate) for Layer III frames (the only layer
+/// that's relevant for typical audio-file MP3s). Returns None for
+/// invalid/non-Layer-III headers so the caller can resync.
+fn mp3_frame_info(h: u32) -> Option<(usize, u64, u64)> {
     if (h >> 21) & 0x7FF != 0x7FF { return None; }
     let version = (h >> 19) & 0x3; // 0=2.5, 1=reserved, 2=2, 3=1
     let layer = (h >> 17) & 0x3;   // 0=reserved, 1=III, 2=II, 3=I
@@ -79,9 +79,8 @@ fn mp3_frame_info(h: u32) -> Option<(usize, u64)> {
         * (bitrate_kbps as usize) * 1000
         / (sr as usize)
         + padding;
-    let dur_ms = (samples_per_frame as u64 * 1000) / (sr as u64);
 
-    Some((frame_size, dur_ms))
+    Some((frame_size, samples_per_frame as u64, sr as u64))
 }
 
 /// Walk the audio frames of a finished MP3 and return absolute file byte
@@ -89,7 +88,7 @@ fn mp3_frame_info(h: u32) -> Option<(usize, u64)> {
 /// start of the merged file). The leading Xing/Info silent frame written by
 /// the muxer is detected and skipped, so chapter 0 maps to the first real
 /// audio frame rather than the silent Xing.
-fn chapter_byte_offsets_by_time(data: &[u8], chapter_starts_ms: &[u64]) -> Result<Vec<u32>, String> {
+pub(crate) fn chapter_byte_offsets_by_time(data: &[u8], chapter_starts_ms: &[u64]) -> Result<Vec<u32>, String> {
     if data.len() < 10 || &data[..3] != b"ID3" {
         return Err("Output is missing an ID3v2 header".to_string());
     }
@@ -103,7 +102,7 @@ fn chapter_byte_offsets_by_time(data: &[u8], chapter_starts_ms: &[u64]) -> Resul
     // the first real audio sample, not on the muxer's silent header frame.
     if pos + 4 <= data.len() {
         let h = u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
-        if let Some((fsize, _)) = mp3_frame_info(h) {
+        if let Some((fsize, _, _)) = mp3_frame_info(h) {
             let scan_end = (pos + fsize).min(data.len());
             let body = &data[pos..scan_end];
             let has_xing = body.windows(4)
@@ -112,7 +111,11 @@ fn chapter_byte_offsets_by_time(data: &[u8], chapter_starts_ms: &[u64]) -> Resul
         }
     }
 
-    let mut t_ms: u64 = 0;
+    // Time is tracked in samples, not whole milliseconds: a 44.1 kHz frame
+    // lasts 26.122 ms, and truncating that to 26 ms drifted the offsets by
+    // 0.47% — Apple Books, which seeks by these bytes, landed ~17 s late per
+    // hour of audio.
+    let mut t_samples: u64 = 0;
     let mut offsets: Vec<u32> = Vec::with_capacity(chapter_starts_ms.len());
     let mut next: usize = 0;
 
@@ -123,19 +126,20 @@ fn chapter_byte_offsets_by_time(data: &[u8], chapter_starts_ms: &[u64]) -> Resul
             continue;
         }
         let h = u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
-        let (frame_size, dur_ms) = match mp3_frame_info(h) {
+        let (frame_size, samples, sr) = match mp3_frame_info(h) {
             Some(v) => v,
             None => { pos += 1; continue; }
         };
 
         // A chapter starts on the frame whose audio reaches its target time.
+        let t_ms = t_samples * 1000 / sr;
         while next < chapter_starts_ms.len() && chapter_starts_ms[next] <= t_ms {
             offsets.push(pos as u32);
             next += 1;
         }
 
         pos += frame_size;
-        t_ms = t_ms.saturating_add(dur_ms);
+        t_samples = t_samples.saturating_add(samples);
     }
 
     // Any chapters past the audio (shouldn't happen, but be defensive) get

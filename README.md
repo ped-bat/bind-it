@@ -20,24 +20,33 @@ uniform MP3 and you keep the original codec.
 
 ## How It Works
 
-Bind it inspects the codec of every input file and picks the fastest merge path:
+Bind it inspects every input file and picks the fastest path that gives a
+clean, uniform stream:
 
-1. **Remux** — when all files are AAC (M4A/M4B), they are concatenated directly into the
-   output container with no re-encoding. This is near-instant and completely lossless.
+1. **Remux** — when all files share one codec that the output container
+   carries natively (AAC, ALAC, or MP3) *and* the same sample rate, channel
+   count, AAC profile and bit depth, they are concatenated with no
+   re-encoding. Near-instant and lossless. A uniform MP3 set comes out as a
+   chaptered `.mp3` (or MP3 wrapped in `.m4b` if you prefer Apple Books'
+   chapter list).
 
-2. **Transcode** — when all files are MP3 (or another non-AAC codec), each file is transcoded
-   to AAC in parallel across all CPU cores, then concatenated into the final M4B.
+2. **Normalise** — same codec, but a few files differ in sample rate,
+   channels, profile or bit depth: only those outliers are re-encoded to
+   match the majority (at the majority's bitrate); the rest pass through
+   untouched.
 
-3. **Mixed** — when the input contains a mix of AAC and non-AAC files, only the non-AAC files
-   are transcoded. AAC files that already match the target sample rate are passed through
-   untouched. Everything is then concatenated in the correct order.
+3. **Transcode** — mixed codecs, FLAC/WAV/WMA sources, or Compress mode:
+   every file that needs it is transcoded in parallel across all CPU cores
+   (to AAC in Compress mode, to ALAC in Lossless mode), then concatenated.
 
-In all three paths, chapter metadata and cover art are written into the output file as a final step.
+Chapter markers, metadata and cover art are written as a final step, and
+the finished file only appears in your output folder once it is complete.
 
 ## System Requirements
 
-- **macOS** 11+ (Apple Silicon or Intel), **Windows** 10/11 (x86_64), or
-  **Linux** x86_64 (AppImage)
+- **macOS** 12+ on Apple Silicon, 11+ on Intel; **Windows** 10/11 (x86_64); or
+  **Linux** x86_64 (AppImage) with glibc 2.35 or newer — Ubuntu 22.04+,
+  Debian 12+, Fedora 36+, Linux Mint 21+
 - Nothing else — `ffmpeg` and `ffprobe` ship inside the app
 
 ## Development

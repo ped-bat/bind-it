@@ -29,8 +29,7 @@
 
   function clearCover(/** @type {MouseEvent} */ e) {
     e.stopPropagation();
-    fileStore.coverArt = null;
-    fileStore.coverArtPath = null;
+    fileStore.dismissCover();
   }
 </script>
 

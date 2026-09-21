@@ -45,8 +45,20 @@ pub fn run() {
             install_macos_menu(_app)?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        // Closing the window (Windows/Linux) or quitting (macOS Cmd+Q) while a
+        // merge runs must not orphan the ffmpeg children or leak the temp dir.
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                binaries::abort_conversion(std::time::Duration::from_secs(5));
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                binaries::abort_conversion(std::time::Duration::from_secs(5));
+            }
+        });
 }
 
 #[cfg(target_os = "macos")]

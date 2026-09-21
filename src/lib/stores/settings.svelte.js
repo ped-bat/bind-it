@@ -4,19 +4,26 @@ const MP3_CHOICE_KEY = "bindit:mp3FormatChoice";
 
 export const FORBIDDEN_FILENAME_CHARS = /[/\\:*?"<>|]/g;
 
+// CON, PRN, AUX, NUL, COM1-9, LPT1-9 — with or without an extension, any case.
+const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\.|$)/i;
+
 /**
  * Strip characters no OS accepts in file names, plus leading/trailing
- * whitespace and trailing dots (both illegal on Windows). Matches the
- * backend's validate_filename rules so a sanitized name always passes.
+ * whitespace and trailing dots (both illegal on Windows), and rename the
+ * device names Windows refuses to create. Matches the backend's
+ * validate_filename rules so a sanitized name always passes.
  * @param {string} name
  */
 export function sanitizeFilename(name) {
-  return name
+  const cleaned = name
     .replace(FORBIDDEN_FILENAME_CHARS, "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1f]/g, "")
     .trim()
     .replace(/[.\s]+$/, "");
+  return WINDOWS_RESERVED_STEM.test(cleaned)
+    ? cleaned.replace(/^[^.]+/, (stem) => `${stem}_`)
+    : cleaned;
 }
 
 /** @typedef {"mp3" | "mp3-m4b" | "reencode"} Mp3FormatChoice */
@@ -70,6 +77,19 @@ function saveOutputDir(/** @type {string} */ dir) {
   } catch { /* ignore */ }
 }
 
+/**
+ * Tidy a folder path the user typed or pasted: trims, drops the quotes
+ * Windows Explorer's "Copy as path" adds, and turns a bare drive letter
+ * ("C:", which Windows treats as drive-relative) into the drive root.
+ * @param {string} dir
+ */
+export function normalizeOutputDir(dir) {
+  let d = dir.trim();
+  if (d.length >= 2 && d.startsWith('"') && d.endsWith('"')) d = d.slice(1, -1).trim();
+  if (/^[A-Za-z]:$/.test(d)) d += "\\";
+  return d;
+}
+
 class SettingsStore {
   outputDir = $state(loadOutputDir());
   outputFilename = $state("audio");
@@ -93,6 +113,14 @@ class SettingsStore {
    * @type {Mp3FormatChoice}
    */
   mp3FormatChoice = $state(loadMp3Choice());
+  /**
+   * The user's real quality mode while an MP3 bitstream-copy selection forces
+   * the toggle to Lossless. Lives here rather than in QualityPanel because
+   * that component unmounts whenever the chapter list empties, which used to
+   * lose the remembered "compress" and then persist "lossless" over it.
+   * @type {"lossless" | "compress" | null}
+   */
+  qualityModeBeforeForce = $state(null);
 
   /**
    * Set output dir from first file path. Always overwrites — drag/drop is an
@@ -105,7 +133,7 @@ class SettingsStore {
     const sep = filePath.includes("\\") ? "\\" : "/";
     const parts = filePath.split(/[\\/]/);
     parts.pop();
-    this.outputDir = parts.join(sep);
+    this.outputDir = normalizeOutputDir(parts.join(sep));
   }
 
   /**
@@ -116,7 +144,7 @@ class SettingsStore {
   setFilenameFrom(folderName, file) {
     if (this.outputFilename && this.outputFilename !== "audio") return;
     const name = folderName || file?.album || file?.title || "audio";
-    this.outputFilename = name.replace(FORBIDDEN_FILENAME_CHARS, "");
+    this.outputFilename = sanitizeFilename(name) || "audio";
   }
 
   persistQuality() {
@@ -136,6 +164,11 @@ class SettingsStore {
   reset() {
     this.outputDir = "";
     this.outputFilename = "audio";
+    if (this.qualityModeBeforeForce !== null) {
+      this.qualityMode = this.qualityModeBeforeForce;
+      this.qualityModeBeforeForce = null;
+      this.persistQuality();
+    }
   }
 }
 
